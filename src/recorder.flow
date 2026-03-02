@@ -28,6 +28,9 @@ let mut _rec_frames = []
 // Timestamps per frame
 let mut _rec_timestamps = []
 
+// Maximum frames to prevent memory exhaustion (at 200x150, ~3600 frames = ~1GB)
+let REC_MAX_FRAMES = 3600.0
+
 fn recorder_start(fps)
   let mut f = fps
   if f <= 0.0
@@ -67,6 +70,16 @@ fn recorder_capture_rgb(r_buf, g_buf, b_buf, width, height, timestamp_ms)
     return 0.0
   end
 
+  // Guard: prevent unbounded memory growth
+  if _rec_frame_count >= REC_MAX_FRAMES
+    return 0.0
+  end
+
+  // Guard: dimensions must be positive
+  if width <= 0.0 || height <= 0.0
+    return 0.0
+  end
+
   // Rate limiting: skip if too soon since last capture
   if _rec_frame_count > 0.0
     let elapsed = timestamp_ms - _rec_last_capture_ms
@@ -102,6 +115,16 @@ end
 fn recorder_capture_interleaved(rgb_buf, width, height, timestamp_ms)
   // Capture from interleaved RGB buffer [r0,g0,b0, r1,g1,b1, ...]
   if _rec_active == 0.0
+    return 0.0
+  end
+
+  // Guard: prevent unbounded memory growth
+  if _rec_frame_count >= REC_MAX_FRAMES
+    return 0.0
+  end
+
+  // Guard: dimensions must be positive
+  if width <= 0.0 || height <= 0.0
     return 0.0
   end
 

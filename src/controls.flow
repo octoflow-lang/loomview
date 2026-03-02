@@ -104,12 +104,18 @@ fn ctrl_handle_input(ctrl, mouse_x, mouse_y, mouse_pressed, scroll_delta, key_pr
   end
 
   // --- ZOOM (scroll wheel) ---
-  if scroll_delta != 0.0 && in_cvs == 1.0
+  if scroll_delta != 0.0 && in_cvs == 1.0 && cw > 0.0 && ch > 0.0
     let mut factor = 1.0
     if scroll_delta > 0.0
       factor = 0.9
     else
       factor = 1.1
+    end
+
+    // Clamp zoom level to prevent degenerate viewport
+    let new_zoom = ctrl[3] * factor
+    if new_zoom < 0.001 || new_zoom > 10000.0
+      factor = 1.0
     end
 
     // Zoom centered on mouse position

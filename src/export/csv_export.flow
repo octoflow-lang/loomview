@@ -90,6 +90,10 @@ fn csv_export_grid(data, width, height, filename)
     print("csv_export: empty grid")
     return 0.0
   end
+  if width <= 0.0 || height <= 0.0
+    print("csv_export: invalid grid dimensions")
+    return 0.0
+  end
 
   let mut csv = ""
   let mut row = 0.0

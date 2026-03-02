@@ -71,6 +71,10 @@ fn gif_export_single_frame(frame_idx, filename)
   let dims = recorder_get_dimensions()
   let width = dims[0]
   let height = dims[1]
+  if width <= 0.0 || height <= 0.0
+    print("gif_export: invalid dimensions")
+    return 0.0
+  end
 
   let frame = recorder_get_frame(frame_idx)
   let delays = [0.0]

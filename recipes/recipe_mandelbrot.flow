@@ -39,6 +39,12 @@ fn mandelbrot_compute(grid_w, grid_h, x_min, x_max, y_min, y_max, max_iter)
   let n = grid_w * grid_h
   let mut data = []
 
+  // Guard against zero max_iter (div-by-zero)
+  let mut safe_max = max_iter
+  if safe_max < 1.0
+    safe_max = 1.0
+  end
+
   let x_range = x_max - x_min
   let y_range = y_max - y_min
 
@@ -48,9 +54,9 @@ fn mandelbrot_compute(grid_w, grid_h, x_min, x_max, y_min, y_max, max_iter)
     while col < grid_w
       let cr = x_min + col / grid_w * x_range
       let ci = y_min + row / grid_h * y_range
-      let iters = _mandel_iterate(cr, ci, max_iter)
+      let iters = _mandel_iterate(cr, ci, safe_max)
       // Normalize to [0, 1]
-      push(data, iters / max_iter)
+      push(data, iters / safe_max)
       col = col + 1.0
     end
     row = row + 1.0
@@ -111,8 +117,8 @@ fn recipe_mandelbrot_run()
     let cvs_w = 800.0
     let cvs_h = 670.0
 
-    if mp == 1.0 && mx >= cvs_x && mx <= cvs_x + cvs_w && my >= cvs_y && my <= cvs_y + cvs_h
-      // Zoom 2x centered on click position
+    if mp == 1.0 && mx >= cvs_x && mx <= cvs_x + cvs_w && my >= cvs_y && my <= cvs_y + cvs_h && zoom_level < 1000000.0
+      // Zoom 2x centered on click position (capped at 1M zoom for float precision)
       let rel_x = (mx - cvs_x) / cvs_w
       let rel_y = (my - cvs_y) / cvs_h
 

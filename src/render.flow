@@ -324,6 +324,9 @@ fn viz_render_pie(cvs, data, config, cw, ch)
   let cx = cw / 2.0
   let cy = ch / 2.0
   let radius = _vr_min(cw, ch) / 2.0 - pad
+  if radius <= 0.0
+    return 0.0
+  end
 
   let cmds = chart_pie(data, cx, cy, radius)
   let n_cmds = chart_cmd_count(cmds)
@@ -513,6 +516,9 @@ fn viz_render_genome(cvs, data, config, cw, ch)
   end
 
   let cell_w = pw / n
+  if cell_w < 1.0
+    return 0.0
+  end
   let cell_h = ph
 
   let pal_id = _vr_cfg(config, CFG_PALETTE)

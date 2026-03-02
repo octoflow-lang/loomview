@@ -85,17 +85,18 @@ end
 fn _sort_insertion_step(arr, pass_num)
   // Insert element at pass_num into sorted prefix
   let n = len(arr)
-  if pass_num >= n
+  if pass_num >= n || pass_num < 1.0
     return arr
   end
   let key = arr[int(pass_num)]
   let mut j = pass_num - 1.0
-  while j >= 0.0
+  let mut done = 0.0
+  while j >= 0.0 && done == 0.0
     if arr[int(j)] > key
       arr[int(j + 1.0)] = arr[int(j)]
       j = j - 1.0
     else
-      j = -1.0
+      done = 1.0
     end
   end
   arr[int(j + 1.0)] = key
@@ -157,7 +158,10 @@ fn recipe_sort_run(n)
   let max_val = size
 
   // Layout: 3 panels stacked vertically
-  let panel_h = (ch - 30.0) / 3.0
+  let mut panel_h = (ch - 30.0) / 3.0
+  if panel_h < 10.0
+    panel_h = 10.0
+  end
   let pad = 10.0
 
   let mut step_count = 0.0

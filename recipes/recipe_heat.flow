@@ -168,7 +168,10 @@ fn recipe_heat_run(w, h)
     let speed = app_speed()
 
     if playing == 1.0
-      let alpha_val = app_get_slider(0.0)
+      let mut alpha_val = app_get_slider(0.0)
+      if alpha_val > 0.25
+        alpha_val = 0.25
+      end
       if alpha_val > 0.0
         state[2] = alpha_val
       end

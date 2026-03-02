@@ -88,9 +88,9 @@ fn stream_poll(current_ms)
     let fp = viz_fingerprint(data)
     if len(_stream_prev_fp) == 16.0
       // Compare key dimensions
-      let min_diff = fp[1] - _stream_prev_fp[1]
-      let max_diff = fp[2] - _stream_prev_fp[2]
-      let mean_diff = fp[3] - _stream_prev_fp[3]
+      let mut min_diff = fp[1] - _stream_prev_fp[1]
+      let mut max_diff = fp[2] - _stream_prev_fp[2]
+      let mut mean_diff = fp[3] - _stream_prev_fp[3]
       if min_diff < 0.0
         min_diff = 0.0 - min_diff
       end

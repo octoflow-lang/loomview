@@ -321,10 +321,14 @@ fn viz_fingerprint(data)
   end
   fp[14] = bounded
 
-  // Unique ratio
+  // Unique ratio (capped at 200 samples to avoid O(n^2) for large data)
+  let mut sample_n = n
+  if sample_n > 200.0
+    sample_n = 200.0
+  end
   let mut n_unique = 0.0
   i = 0.0
-  while i < n
+  while i < sample_n
     let mut found = 0.0
     let mut j2 = 0.0
     while j2 < i
@@ -339,7 +343,7 @@ fn viz_fingerprint(data)
     end
     i = i + 1.0
   end
-  fp[15] = n_unique / n
+  fp[15] = n_unique / sample_n
 
   return fp
 end

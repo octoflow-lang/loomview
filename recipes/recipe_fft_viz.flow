@@ -37,6 +37,9 @@ end
 fn _fft_magnitude(signal)
   // Compute DFT magnitude spectrum for half of bins (real signal symmetry)
   let n = len(signal)
+  if n < 2.0
+    return []
+  end
   let half = floor(n / 2.0)
   let mut magnitudes = []
 

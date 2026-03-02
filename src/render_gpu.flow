@@ -48,6 +48,10 @@ fn gpu_render_heatmap(canvas_r, canvas_g, canvas_b, data, config, cw, ch)
     return 0.0
   end
 
+  if len(config) < 9.0
+    return 0.0
+  end
+
   let gw = config[5]
   let gh = config[6]
   if gw <= 0.0 || gh <= 0.0
@@ -83,7 +87,40 @@ fn gpu_render_heatmap(canvas_r, canvas_g, canvas_b, data, config, cw, ch)
 
   let d_range = d_max - d_min
   if d_range <= 0.0
-    return 0.0
+    // Constant data — render all cells with middle palette color
+    let pal_id = config[4]
+    let pal = viz_palette(pal_id, 16.0)
+    let mid_cr = pal[int(8.0 * 3.0)]
+    let mid_cg = pal[int(8.0 * 3.0 + 1.0)]
+    let mid_cb = pal[int(8.0 * 3.0 + 2.0)]
+    let mut row = 0.0
+    while row < gh
+      let mut col = 0.0
+      while col < gw
+        let idx = int(row * gw + col)
+        if idx < n
+          let px = pad + col * cell_w
+          let py = pad + row * cell_h
+          let mut dy = 0.0
+          while dy < cell_h
+            let mut dx = 0.0
+            while dx < cell_w
+              let pi = int((py + dy) * cw + px + dx)
+              if pi >= 0.0 && pi < len(canvas_r)
+                canvas_r[pi] = mid_cr
+                canvas_g[pi] = mid_cg
+                canvas_b[pi] = mid_cb
+              end
+              dx = dx + 1.0
+            end
+            dy = dy + 1.0
+          end
+        end
+        col = col + 1.0
+      end
+      row = row + 1.0
+    end
+    return 1.0
   end
 
   // Generate palette (16 color buckets for GPU batching)
@@ -149,6 +186,10 @@ fn gpu_render_scatter(canvas_r, canvas_g, canvas_b, data, config, cw, ch)
 
   let n = len(data)
   if n < 2.0
+    return 0.0
+  end
+
+  if len(config) < 9.0
     return 0.0
   end
 

@@ -196,8 +196,12 @@ fn recipe_wave_run(w, h)
     let speed = app_speed()
 
     if playing == 1.0
-      let c_val = app_get_slider(0.0)
+      let mut c_val = app_get_slider(0.0)
       let d_val = app_get_slider(1.0)
+      // Clamp wave speed for numerical stability (c^2 must be <= 0.5)
+      if c_val > 0.707
+        c_val = 0.707
+      end
       if c_val > 0.0
         state[2] = c_val
       end
