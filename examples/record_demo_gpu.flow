@@ -1,0 +1,118 @@
+// record_demo_gpu.flow — GPU-Accelerated Recording Demo (Loom VM)
+//
+// Renders animated bar chart frames on GPU using the Loom VM Tier 2 pattern:
+//   emit_clear + emit_rect kernel dispatches → loom_build → loom_run
+//
+// Loom Recipe:
+//   Main Loom (GPU): clear framebuffer + draw 8 colored rectangles per frame
+//   Support Loom (CPU, multi-threaded): compute bar data, orchestrate, write_bytes
+//
+// Output:
+//   lv_recording.bin  — LVRC binary (Loom-native, reimportable)
+//   lv_recording.html — self-contained viewer (opens in any browser)
+//
+// Usage:
+//   octoflow run examples/record_demo_gpu.flow --allow-write
+
+use "../src/palette"
+use "../src/recorder"
+use "../src/export/loom_export"
+use "gui/kernels/emit_clear"
+use "gui/kernels/emit_rect"
+
+print("LoomView GPU Record Demo")
+print("  Loom Recipe: Main Loom (GPU render) + Support Loom (I/O)")
+
+// === One-time: generate SPIR-V kernels via IR builder ===
+print("  Compiling GPU kernels...")
+let _ec = emit_clear("lv_clear.spv")
+let _er = emit_rect("lv_rect.spv")
+
+// === Dimensions ===
+let w = 80.0
+let h = 60.0
+let total = w * h
+let n_bars = 8.0
+let n_frames = 15.0
+let wgs = floor((total + 255.0) / 256.0)
+let bar_w = floor(w / n_bars)
+
+// === Boot Loom VM — planar RGB framebuffer ===
+print("  Booting Loom VM (globals: {total} x 3 = planar RGB)...")
+let vm = loom_boot(1.0, 0.0, total * 3.0)
+
+// === Palette colors (one-time) ===
+let pal = viz_palette(PAL_VIRIDIS, n_bars)
+
+// === Start recording ===
+let _rec = recorder_start(5.0)
+
+// === Render loop: GPU dispatches per frame ===
+let mut frame = 0.0
+while frame < n_frames
+  // --- CPU: compute bar heights (8 floats — trivial) ---
+  let t = frame / n_frames
+  let mut bar_data = []
+  let mut i = 0.0
+  while i < n_bars
+    let mut val = 5.0 + 20.0 * sin(t * 6.283 + i * 0.6)
+    if val < 0.0
+      val = 0.0
+    end
+    push(bar_data, val)
+    i = i + 1.0
+  end
+
+  // --- GPU: clear framebuffer (dark background) ---
+  let mut pc_clear = [total, 15.0, 15.0, 25.0]
+  let _dc = loom_dispatch(vm, "lv_clear.spv", pc_clear, wgs)
+
+  // --- GPU: draw bars (one rect dispatch per bar) ---
+  i = 0.0
+  while i < n_bars
+    let bx = floor(i * bar_w)
+    let bh = floor(bar_data[int(i)] / 30.0 * h)
+    if bh > 0.0
+      let by = h - bh
+      let bw = bar_w - 1.0
+      let ci = int(i * 3.0)
+      let cr = pal[ci]
+      let cg = pal[ci + 1]
+      let cb = pal[ci + 2]
+      let mut pc_rect = [total, w, bx, by, bw, bh, cr, cg, cb]
+      let _dr = loom_dispatch(vm, "lv_rect.spv", pc_rect, wgs)
+    end
+    i = i + 1.0
+  end
+
+  // --- GPU: build command buffer + execute ---
+  let prog = loom_build(vm)
+  let _run = loom_run(prog)
+
+  // --- Readback: planar RGB from GPU globals ---
+  let r_buf = loom_read_globals(vm, 0.0, total)
+  let g_buf = loom_read_globals(vm, total, total)
+  let b_buf = loom_read_globals(vm, total * 2.0, total)
+
+  // --- Capture frame into recorder ---
+  let _cap = recorder_capture_rgb(r_buf, g_buf, b_buf, w, h, frame * 200.0)
+
+  let _free = loom_free(prog)
+
+  let fc = recorder_frame_count()
+  print("  Frame {fc} captured (GPU)")
+
+  frame = frame + 1.0
+end
+
+let _stop = recorder_stop()
+
+// === Shutdown Loom VM ===
+let _sd = loom_shutdown(vm)
+
+// === Export via Loom-native pipeline (binary I/O) ===
+print("  Exporting via Loom engine...")
+let _bin = loom_export_bin()
+let _html = loom_export_html(w, h, 5.0, 15.0)
+
+print("  Done! Open lv_recording.html in any browser.")
