@@ -1,0 +1,155 @@
+// recipe_mandelbrot.flow — Mandelbrot Fractal Zoom Recipe
+//
+// Renders the Mandelbrot set with interactive zoom.
+// Click to zoom into a region. Press R to reset.
+//
+// Usage:
+//   use "recipes/recipe_mandelbrot"
+//   recipe_mandelbrot_run()
+
+use "gui/gui_core"
+use "gui/canvas"
+use "src/data"
+use "src/config"
+use "src/render"
+use "src/app"
+use "src/palette"
+
+fn _mandel_iterate(cr, ci, max_iter)
+  // z = z^2 + c, return iteration count
+  let mut zr = 0.0
+  let mut zi = 0.0
+  let mut i = 0.0
+  while i < max_iter
+    let zr2 = zr * zr
+    let zi2 = zi * zi
+    if zr2 + zi2 > 4.0
+      return i
+    end
+    let new_zr = zr2 - zi2 + cr
+    zi = 2.0 * zr * zi + ci
+    zr = new_zr
+    i = i + 1.0
+  end
+  return max_iter
+end
+
+fn mandelbrot_compute(grid_w, grid_h, x_min, x_max, y_min, y_max, max_iter)
+  // Compute Mandelbrot iteration counts for a grid
+  let n = grid_w * grid_h
+  let mut data = []
+
+  let x_range = x_max - x_min
+  let y_range = y_max - y_min
+
+  let mut row = 0.0
+  while row < grid_h
+    let mut col = 0.0
+    while col < grid_w
+      let cr = x_min + col / grid_w * x_range
+      let ci = y_min + row / grid_h * y_range
+      let iters = _mandel_iterate(cr, ci, max_iter)
+      // Normalize to [0, 1]
+      push(data, iters / max_iter)
+      col = col + 1.0
+    end
+    row = row + 1.0
+  end
+
+  return data
+end
+
+fn recipe_mandelbrot_run()
+  let grid_w = 160.0
+  let grid_h = 120.0
+  let max_iter = 100.0
+
+  // Initial view: full Mandelbrot set
+  let mut x_min = -2.5
+  let mut x_max = 1.0
+  let mut y_min = -1.25
+  let mut y_max = 1.25
+
+  print("LoomView Recipe: Mandelbrot Fractal ({grid_w}x{grid_h})")
+
+  let data = mandelbrot_compute(grid_w, grid_h, x_min, x_max, y_min, y_max, max_iter)
+
+  let mut config = viz_auto_config(data, VIZ_HEATMAP)
+  config[4] = PAL_INFERNO
+  config[5] = grid_w
+  config[6] = grid_h
+
+  let _cvs = app_open("LoomView - Mandelbrot Fractal", 1000.0, 700.0)
+  app_add_record_button()
+
+  let _iter_s = app_add_slider("Max Iterations", 20.0, 500.0, 100.0)
+
+  let _r = app_update(data, VIZ_HEATMAP, config)
+
+  // Interactive loop: click to zoom, R to reset
+  let mut zoom_level = 1.0
+  let mut need_recompute = 0.0
+
+  while app_running() == 1.0
+    gui_update()
+
+    // Get iteration count from slider
+    let iter_val = app_get_slider(0.0)
+    let mut cur_max = max_iter
+    if iter_val > 10.0
+      cur_max = floor(iter_val)
+    end
+
+    // Check for mouse click in canvas area
+    let mx = mouse_x()
+    let my = mouse_y()
+    let mp = mouse_pressed()
+
+    // Canvas is at x=200, y=0, w=800, h=670
+    let cvs_x = 200.0
+    let cvs_y = 0.0
+    let cvs_w = 800.0
+    let cvs_h = 670.0
+
+    if mp == 1.0 && mx >= cvs_x && mx <= cvs_x + cvs_w && my >= cvs_y && my <= cvs_y + cvs_h
+      // Zoom 2x centered on click position
+      let rel_x = (mx - cvs_x) / cvs_w
+      let rel_y = (my - cvs_y) / cvs_h
+
+      let center_x = x_min + rel_x * (x_max - x_min)
+      let center_y = y_min + rel_y * (y_max - y_min)
+
+      let half_w = (x_max - x_min) / 4.0
+      let half_h = (y_max - y_min) / 4.0
+
+      x_min = center_x - half_w
+      x_max = center_x + half_w
+      y_min = center_y - half_h
+      y_max = center_y + half_h
+
+      zoom_level = zoom_level * 2.0
+      need_recompute = 1.0
+    end
+
+    // Check for R key to reset
+    let kp = key_pressed()
+    if kp == 82.0 || kp == 114.0
+      x_min = -2.5
+      x_max = 1.0
+      y_min = -1.25
+      y_max = 1.25
+      zoom_level = 1.0
+      need_recompute = 1.0
+    end
+
+    if need_recompute == 1.0
+      let new_data = mandelbrot_compute(grid_w, grid_h, x_min, x_max, y_min, y_max, cur_max)
+      let _r2 = app_update(new_data, VIZ_HEATMAP, config)
+      app_set_status("Zoom: " + str(floor(zoom_level)) + "x | Iterations: " + str(floor(cur_max)))
+      need_recompute = 0.0
+    end
+  end
+
+  print("Mandelbrot explorer ended at {zoom_level}x zoom")
+  return 0.0
+end

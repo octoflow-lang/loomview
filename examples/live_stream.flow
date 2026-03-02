@@ -1,0 +1,57 @@
+// live_stream.flow — Live streaming visualization example
+//
+// Connects to a running Loom VM and visualizes its globals buffer.
+// Start a Loom program first, then run this to watch it live.
+//
+// Usage:
+//   octoflow run examples/live_stream.flow
+
+use "src/data"
+use "src/config"
+use "src/render"
+use "src/app"
+use "src/stream"
+
+fn main()
+  print("LoomView Live Stream Example")
+  print("  Connecting to Loom VM globals buffer...")
+
+  let _s = stream_start(30.0)
+
+  let _cvs = app_open("LoomView - Live Stream", 1000.0, 700.0)
+  app_add_record_button()
+
+  let mut viz_type = VIZ_LINE
+  let mut config = []
+  let mut initialized = 0.0
+
+  while app_running() == 1.0
+    gui_update()
+
+    let ms = elapsed_ms()
+    let polled = stream_poll(ms)
+
+    if polled == 1.0
+      let data = stream_read()
+      let n = len(data)
+
+      if n > 0.0
+        if initialized == 0.0 || stream_changed() == 1.0
+          // Re-fingerprint and auto-configure
+          viz_type = viz_best(data)
+          config = viz_auto_config(data, viz_type)
+          let type_name = viz_type_name(viz_type)
+          app_set_status("Streaming: {n} values | {type_name} | Frame #{stream_frame_count()}")
+          initialized = 1.0
+        end
+
+        let _r = app_update(data, viz_type, config)
+      end
+    end
+  end
+
+  let _stop = stream_stop()
+  return 0.0
+end
+
+main()

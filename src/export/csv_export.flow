@@ -1,0 +1,117 @@
+// csv_export.flow — Export recorded data as CSV
+//
+// Exports raw frame data and metadata for reimport or external tools.
+//
+// Usage:
+//   use "src/export/csv_export"
+//   csv_export_recording("output.csv")
+//   csv_export_data(data, "my_data.csv")
+
+use "../recorder"
+
+fn csv_export_recording(filename)
+  // Export recording metadata + per-frame summary
+  let n_frames = recorder_frame_count()
+  if n_frames == 0.0
+    print("csv_export: no frames to export")
+    return 0.0
+  end
+
+  let dims = recorder_get_dimensions()
+  let width = dims[0]
+  let height = dims[1]
+  let fps = recorder_get_fps()
+  let timestamps = recorder_get_timestamps()
+
+  let mut csv = "frame,timestamp_ms,width,height\n"
+  let mut i = 0.0
+  while i < n_frames
+    let mut ts = 0.0
+    if int(i) < len(timestamps)
+      ts = timestamps[int(i)]
+    end
+    csv = csv + str(floor(i)) + "," + str(floor(ts)) + "," + str(floor(width)) + "," + str(floor(height)) + "\n"
+    i = i + 1.0
+  end
+
+  let _w = write_file(filename, csv)
+  print("csv_export: {n_frames} frames metadata to {filename}")
+
+  return 1.0
+end
+
+fn csv_export_data(data, filename)
+  // Export raw data array as single-column CSV
+  let n = len(data)
+  if n == 0.0
+    print("csv_export: empty data")
+    return 0.0
+  end
+
+  let mut csv = "index,value\n"
+  let mut i = 0.0
+  while i < n
+    csv = csv + str(floor(i)) + "," + str(data[int(i)]) + "\n"
+    i = i + 1.0
+  end
+
+  let _w = write_file(filename, csv)
+  print("csv_export: {n} values to {filename}")
+  return 1.0
+end
+
+fn csv_export_xy(data, filename)
+  // Export paired data [x0,y0,x1,y1,...] as two-column CSV
+  let n = len(data)
+  if n < 2.0
+    print("csv_export: need at least one x,y pair")
+    return 0.0
+  end
+
+  let n_pts = floor(n / 2.0)
+  let mut csv = "x,y\n"
+  let mut i = 0.0
+  while i < n_pts
+    let x = data[int(i * 2.0)]
+    let y = data[int(i * 2.0 + 1.0)]
+    csv = csv + str(x) + "," + str(y) + "\n"
+    i = i + 1.0
+  end
+
+  let _w = write_file(filename, csv)
+  print("csv_export: {n_pts} points to {filename}")
+  return 1.0
+end
+
+fn csv_export_grid(data, width, height, filename)
+  // Export 2D grid data as CSV matrix
+  let n = len(data)
+  if n == 0.0
+    print("csv_export: empty grid")
+    return 0.0
+  end
+
+  let mut csv = ""
+  let mut row = 0.0
+  while row < height
+    let mut col = 0.0
+    while col < width
+      let idx = int(row * width + col)
+      if idx < n
+        csv = csv + str(data[idx])
+      else
+        csv = csv + "0"
+      end
+      if col < width - 1.0
+        csv = csv + ","
+      end
+      col = col + 1.0
+    end
+    csv = csv + "\n"
+    row = row + 1.0
+  end
+
+  let _w = write_file(filename, csv)
+  print("csv_export: {width}x{height} grid to {filename}")
+  return 1.0
+end

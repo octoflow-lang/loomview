@@ -1,0 +1,230 @@
+// recipe_sort_viz.flow — Sorting Algorithm Race Visualization
+//
+// Visualizes multiple sorting algorithms side by side.
+// Shows step-by-step progress as colored bars.
+//
+// Algorithms: Bubble Sort, Selection Sort, Insertion Sort, Merge Sort (iterative)
+//
+// Usage:
+//   use "recipes/recipe_sort_viz"
+//   recipe_sort_run(80)
+
+use "gui/gui_core"
+use "gui/canvas"
+use "src/data"
+use "src/config"
+use "src/render"
+use "src/app"
+use "src/palette"
+
+fn _sort_random_array(n)
+  // Generate pseudo-random array using LCG
+  let mut arr = []
+  let mut seed = 12345.0
+  let mut i = 0.0
+  while i < n
+    seed = (seed * 1103515245.0 + 12345.0) % 2147483648.0
+    let val = (seed / 2147483648.0) * n
+    push(arr, val)
+    i = i + 1.0
+  end
+  return arr
+end
+
+fn _sort_copy(arr)
+  let mut copy = []
+  let mut i = 0.0
+  while i < len(arr)
+    push(copy, arr[int(i)])
+    i = i + 1.0
+  end
+  return copy
+end
+
+fn _sort_bubble_step(arr, pass_num)
+  // One pass of bubble sort
+  let n = len(arr)
+  let limit = n - pass_num - 1.0
+  if limit < 1.0
+    return arr
+  end
+  let mut i = 0.0
+  while i < limit
+    if arr[int(i)] > arr[int(i + 1.0)]
+      let tmp = arr[int(i)]
+      arr[int(i)] = arr[int(i + 1.0)]
+      arr[int(i + 1.0)] = tmp
+    end
+    i = i + 1.0
+  end
+  return arr
+end
+
+fn _sort_selection_step(arr, pass_num)
+  // One step of selection sort
+  let n = len(arr)
+  if pass_num >= n - 1.0
+    return arr
+  end
+  let mut min_idx = pass_num
+  let mut i = pass_num + 1.0
+  while i < n
+    if arr[int(i)] < arr[int(min_idx)]
+      min_idx = i
+    end
+    i = i + 1.0
+  end
+  if min_idx != pass_num
+    let tmp = arr[int(pass_num)]
+    arr[int(pass_num)] = arr[int(min_idx)]
+    arr[int(min_idx)] = tmp
+  end
+  return arr
+end
+
+fn _sort_insertion_step(arr, pass_num)
+  // Insert element at pass_num into sorted prefix
+  let n = len(arr)
+  if pass_num >= n
+    return arr
+  end
+  let key = arr[int(pass_num)]
+  let mut j = pass_num - 1.0
+  while j >= 0.0
+    if arr[int(j)] > key
+      arr[int(j + 1.0)] = arr[int(j)]
+      j = j - 1.0
+    else
+      j = -1.0
+    end
+  end
+  arr[int(j + 1.0)] = key
+  return arr
+end
+
+fn _sort_render_bars(cvs, arr, x_off, y_off, pw, ph, max_val, cr, cg, cb)
+  // Render array as colored vertical bars
+  let n = len(arr)
+  if n == 0.0
+    return 0.0
+  end
+  let bar_w = pw / n
+  if bar_w < 1.0
+    return 0.0
+  end
+
+  let mut i = 0.0
+  while i < n
+    let val = arr[int(i)]
+    let mut bar_h = 0.0
+    if max_val > 0.0
+      bar_h = val / max_val * ph
+    end
+    let bx = x_off + i * bar_w
+    let by = y_off + ph - bar_h
+    let _d = gui_canvas_fill(cvs, bx, by, bar_w - 1.0, bar_h, cr, cg, cb)
+    i = i + 1.0
+  end
+  return 1.0
+end
+
+fn recipe_sort_run(n)
+  let mut size = n
+  if size < 10.0
+    size = 10.0
+  end
+  if size > 200.0
+    size = 200.0
+  end
+
+  print("LoomView Recipe: Sorting Race ({size} elements)")
+
+  // Create 3 copies of the same random array
+  let original = _sort_random_array(size)
+  let mut bubble_arr = _sort_copy(original)
+  let mut select_arr = _sort_copy(original)
+  let mut insert_arr = _sort_copy(original)
+
+  let _cvs = app_open("LoomView - Sorting Race", 1000.0, 700.0)
+  app_add_transport()
+  app_add_record_button()
+
+  let canvas = app_canvas()
+  let cs = app_canvas_size()
+  let cw = cs[0]
+  let ch = cs[1]
+
+  let max_val = size
+
+  // Layout: 3 panels stacked vertically
+  let panel_h = (ch - 30.0) / 3.0
+  let pad = 10.0
+
+  let mut step_count = 0.0
+  let mut bubble_done = 0.0
+  let mut select_done = 0.0
+  let mut insert_done = 0.0
+
+  // Initial render
+  let _c = gui_canvas_clear(canvas)
+  let _bg = gui_canvas_fill(canvas, 0.0, 0.0, cw, ch, 15.0, 15.0, 25.0)
+  let _r1 = _sort_render_bars(canvas, bubble_arr, pad, pad, cw - pad * 2.0, panel_h - pad, max_val, 100.0, 200.0, 255.0)
+  let _r2 = _sort_render_bars(canvas, select_arr, pad, panel_h + pad, cw - pad * 2.0, panel_h - pad, max_val, 255.0, 150.0, 100.0)
+  let _r3 = _sort_render_bars(canvas, insert_arr, pad, panel_h * 2.0 + pad, cw - pad * 2.0, panel_h - pad, max_val, 100.0, 255.0, 150.0)
+
+  while app_running() == 1.0
+    gui_update()
+
+    let playing = app_is_playing()
+    let speed = app_speed()
+
+    if playing == 1.0
+      let mut steps = floor(speed)
+      if steps < 1.0
+        steps = 1.0
+      end
+
+      let mut s = 0.0
+      while s < steps
+        if bubble_done == 0.0
+          bubble_arr = _sort_bubble_step(bubble_arr, step_count)
+          if step_count >= size - 1.0
+            bubble_done = 1.0
+          end
+        end
+        if select_done == 0.0
+          select_arr = _sort_selection_step(select_arr, step_count)
+          if step_count >= size - 1.0
+            select_done = 1.0
+          end
+        end
+        if insert_done == 0.0
+          if step_count + 1.0 < size
+            insert_arr = _sort_insertion_step(insert_arr, step_count + 1.0)
+          end
+          if step_count >= size - 1.0
+            insert_done = 1.0
+          end
+        end
+        step_count = step_count + 1.0
+        s = s + 1.0
+      end
+
+      // Render
+      let _c2 = gui_canvas_clear(canvas)
+      let _bg2 = gui_canvas_fill(canvas, 0.0, 0.0, cw, ch, 15.0, 15.0, 25.0)
+      let _rb = _sort_render_bars(canvas, bubble_arr, pad, pad, cw - pad * 2.0, panel_h - pad, max_val, 100.0, 200.0, 255.0)
+      let _rs = _sort_render_bars(canvas, select_arr, pad, panel_h + pad, cw - pad * 2.0, panel_h - pad, max_val, 255.0, 150.0, 100.0)
+      let _ri = _sort_render_bars(canvas, insert_arr, pad, panel_h * 2.0 + pad, cw - pad * 2.0, panel_h - pad, max_val, 100.0, 255.0, 150.0)
+
+      app_set_status("Step: " + str(floor(step_count)) + " | Bubble/Selection/Insertion")
+
+      if bubble_done == 1.0 && select_done == 1.0 && insert_done == 1.0
+        app_set_status("All sorted! Steps: " + str(floor(step_count)))
+      end
+    end
+  end
+
+  print("Sorting race ended after {step_count} steps")
+  return 0.0
+end

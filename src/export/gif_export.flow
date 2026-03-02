@@ -1,0 +1,80 @@
+// gif_export.flow — Export recorded frames as animated GIF
+//
+// Uses the stdlib gif_encode module for LZW compression.
+// Wraps the recorder's frame buffer into GIF format.
+//
+// Usage:
+//   use "src/export/gif_export"
+//   gif_export_recording("output.gif")
+
+use "media/gif_encode"
+use "../recorder"
+
+fn gif_export_recording(filename)
+  // Export all recorded frames as animated GIF
+  let n_frames = recorder_frame_count()
+  if n_frames == 0.0
+    print("gif_export: no frames to export")
+    return 0.0
+  end
+
+  let dims = recorder_get_dimensions()
+  let width = dims[0]
+  let height = dims[1]
+  let fps = recorder_get_fps()
+
+  if width <= 0.0 || height <= 0.0
+    print("gif_export: invalid dimensions")
+    return 0.0
+  end
+
+  // Build delays array (ms per frame)
+  let delay_ms = floor(1000.0 / fps)
+  let mut delays = []
+  let mut i = 0.0
+  while i < n_frames
+    push(delays, delay_ms)
+    i = i + 1.0
+  end
+
+  // Build concatenated pixel buffer: all frames sequentially
+  // gif_encode expects [frame0_rgb..., frame1_rgb..., ...]
+  let n_pixels = width * height
+  let mut all_pixels = []
+
+  i = 0.0
+  while i < n_frames
+    let frame = recorder_get_frame(i)
+    let mut j = 0.0
+    while j < len(frame)
+      push(all_pixels, frame[int(j)])
+      j = j + 1.0
+    end
+    i = i + 1.0
+  end
+
+  print("gif_export: encoding {n_frames} frames ({width}x{height}) to {filename}")
+  let _r = gif_encode_frames(all_pixels, delays, n_frames, width, height, filename)
+  print("gif_export: done")
+
+  return 1.0
+end
+
+fn gif_export_single_frame(frame_idx, filename)
+  // Export a single frame as static GIF
+  let n_frames = recorder_frame_count()
+  if frame_idx < 0.0 || frame_idx >= n_frames
+    print("gif_export: invalid frame index")
+    return 0.0
+  end
+
+  let dims = recorder_get_dimensions()
+  let width = dims[0]
+  let height = dims[1]
+
+  let frame = recorder_get_frame(frame_idx)
+  let delays = [0.0]
+
+  let _r = gif_encode_frames(frame, delays, 1.0, width, height, filename)
+  return 1.0
+end

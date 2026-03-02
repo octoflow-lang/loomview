@@ -1,0 +1,176 @@
+// recorder.flow — Frame Capture + Export Orchestration
+//
+// Records visualization frames for export as GIF, HTML, or CSV.
+// Captures canvas framebuffer snapshots at configurable FPS.
+//
+// Usage:
+//   use "src/recorder"
+//   recorder_start(10.0)          // 10 FPS
+//   // ... render frames, call recorder_capture() each frame ...
+//   recorder_stop()
+//   recorder_export_gif("output.gif")
+
+// === Recorder State ===
+// Flat arrays for frame data storage
+// Each frame: width * height * 3 RGB values (planar: all R, then G, then B)
+let mut _rec_active = 0.0
+let mut _rec_fps = 10.0
+let mut _rec_frame_count = 0.0
+let mut _rec_width = 0.0
+let mut _rec_height = 0.0
+let mut _rec_last_capture_ms = 0.0
+let mut _rec_interval_ms = 100.0
+
+// Frame storage: flat array of all frames concatenated
+// [frame0_r..., frame0_g..., frame0_b..., frame1_r..., ...]
+let mut _rec_frames = []
+
+// Timestamps per frame
+let mut _rec_timestamps = []
+
+fn recorder_start(fps)
+  let mut f = fps
+  if f <= 0.0
+    f = 10.0
+  end
+  if f > 60.0
+    f = 60.0
+  end
+  _rec_fps = f
+  _rec_interval_ms = 1000.0 / f
+  _rec_active = 1.0
+  _rec_frame_count = 0.0
+  _rec_frames = []
+  _rec_timestamps = []
+  _rec_last_capture_ms = 0.0
+  print("Recorder: started at {f} FPS")
+  return 1.0
+end
+
+fn recorder_stop()
+  _rec_active = 0.0
+  print("Recorder: stopped. {_rec_frame_count} frames captured.")
+  return _rec_frame_count
+end
+
+fn recorder_is_active()
+  return _rec_active
+end
+
+fn recorder_frame_count()
+  return _rec_frame_count
+end
+
+fn recorder_capture_rgb(r_buf, g_buf, b_buf, width, height, timestamp_ms)
+  // Capture a frame from separate R, G, B planar buffers
+  if _rec_active == 0.0
+    return 0.0
+  end
+
+  // Rate limiting: skip if too soon since last capture
+  if _rec_frame_count > 0.0
+    let elapsed = timestamp_ms - _rec_last_capture_ms
+    if elapsed < _rec_interval_ms
+      return 0.0
+    end
+  end
+
+  let n_pixels = width * height
+  if len(r_buf) < n_pixels || len(g_buf) < n_pixels || len(b_buf) < n_pixels
+    return 0.0
+  end
+
+  _rec_width = width
+  _rec_height = height
+
+  // Append frame data (interleaved RGB for GIF compatibility)
+  let mut i = 0.0
+  while i < n_pixels
+    push(_rec_frames, r_buf[int(i)])
+    push(_rec_frames, g_buf[int(i)])
+    push(_rec_frames, b_buf[int(i)])
+    i = i + 1.0
+  end
+
+  push(_rec_timestamps, timestamp_ms)
+  _rec_frame_count = _rec_frame_count + 1.0
+  _rec_last_capture_ms = timestamp_ms
+
+  return 1.0
+end
+
+fn recorder_capture_interleaved(rgb_buf, width, height, timestamp_ms)
+  // Capture from interleaved RGB buffer [r0,g0,b0, r1,g1,b1, ...]
+  if _rec_active == 0.0
+    return 0.0
+  end
+
+  if _rec_frame_count > 0.0
+    let elapsed = timestamp_ms - _rec_last_capture_ms
+    if elapsed < _rec_interval_ms
+      return 0.0
+    end
+  end
+
+  let n_pixels = width * height
+  if len(rgb_buf) < n_pixels * 3.0
+    return 0.0
+  end
+
+  _rec_width = width
+  _rec_height = height
+
+  let mut i = 0.0
+  while i < n_pixels * 3.0
+    push(_rec_frames, rgb_buf[int(i)])
+    i = i + 1.0
+  end
+
+  push(_rec_timestamps, timestamp_ms)
+  _rec_frame_count = _rec_frame_count + 1.0
+  _rec_last_capture_ms = timestamp_ms
+
+  return 1.0
+end
+
+fn recorder_get_frame(frame_idx)
+  // Get a single frame as interleaved RGB array
+  if frame_idx < 0.0 || frame_idx >= _rec_frame_count
+    return []
+  end
+
+  let n_pixels = _rec_width * _rec_height
+  let frame_size = n_pixels * 3.0
+  let offset = int(frame_idx * frame_size)
+
+  let mut frame = []
+  let mut i = 0.0
+  while i < frame_size
+    if offset + int(i) < len(_rec_frames)
+      push(frame, _rec_frames[offset + int(i)])
+    end
+    i = i + 1.0
+  end
+
+  return frame
+end
+
+fn recorder_get_dimensions()
+  return [_rec_width, _rec_height]
+end
+
+fn recorder_get_fps()
+  return _rec_fps
+end
+
+fn recorder_get_timestamps()
+  return _rec_timestamps
+end
+
+fn recorder_clear()
+  _rec_frames = []
+  _rec_timestamps = []
+  _rec_frame_count = 0.0
+  _rec_active = 0.0
+  return 0.0
+end

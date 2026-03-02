@@ -1,0 +1,9 @@
+// basic_bar.flow — Simple bar chart example
+//
+// Usage:
+//   octoflow run examples/basic_bar.flow
+
+use "loomview"
+
+let data = [12.0, 25.0, 8.0, 31.0, 17.0, 22.0, 9.0, 28.0]
+viz_bar(data)

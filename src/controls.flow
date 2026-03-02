@@ -1,0 +1,224 @@
+// controls.flow — Interactive Controls: Pan, Zoom, Inspect, Brush Select
+//
+// Provides viewport manipulation for visualizations.
+// Operates on a config array [x_min, x_max, y_min, y_max, ...].
+//
+// Usage:
+//   use "src/controls"
+//   let ctrl = ctrl_init(config)
+//   ctrl = ctrl_handle_input(ctrl, mouse_x, mouse_y, mouse_pressed, key)
+//   config = ctrl_apply(ctrl, config)
+
+use "gui/gui_core"
+use "gui/canvas"
+
+// Control state layout:
+//   [0] pan_active    [1] pan_start_x   [2] pan_start_y
+//   [3] zoom_level    [4] zoom_cx       [5] zoom_cy
+//   [6] brush_active  [7] brush_x0      [8] brush_y0
+//   [9] brush_x1      [10] brush_y1
+//   [11] inspect_x    [12] inspect_y    [13] inspect_active
+//   [14] orig_x_min   [15] orig_x_max   [16] orig_y_min   [17] orig_y_max
+//   [18] canvas_x     [19] canvas_y     [20] canvas_w     [21] canvas_h
+//   [22] prev_mouse_x [23] prev_mouse_y [24] prev_pressed
+let CTRL_SIZE = 25.0
+
+fn ctrl_init(config, cvs_x, cvs_y, cvs_w, cvs_h)
+  let mut ctrl = []
+  let mut i = 0.0
+  while i < CTRL_SIZE
+    push(ctrl, 0.0)
+    i = i + 1.0
+  end
+
+  // Store original viewport for reset
+  ctrl[14] = config[0]
+  ctrl[15] = config[1]
+  ctrl[16] = config[2]
+  ctrl[17] = config[3]
+
+  // Canvas bounds
+  ctrl[18] = cvs_x
+  ctrl[19] = cvs_y
+  ctrl[20] = cvs_w
+  ctrl[21] = cvs_h
+
+  // Zoom level 1.0 = no zoom
+  ctrl[3] = 1.0
+
+  return ctrl
+end
+
+fn _ctrl_in_canvas(ctrl, mx, my)
+  let cx = ctrl[18]
+  let cy = ctrl[19]
+  let cw = ctrl[20]
+  let ch = ctrl[21]
+  if mx >= cx && mx <= cx + cw && my >= cy && my <= cy + ch
+    return 1.0
+  end
+  return 0.0
+end
+
+fn ctrl_handle_input(ctrl, mouse_x, mouse_y, mouse_pressed, scroll_delta, key_pressed)
+  // Only process if mouse is within canvas bounds
+  let in_cvs = _ctrl_in_canvas(ctrl, mouse_x, mouse_y)
+  let prev_pressed = ctrl[24]
+
+  // Relative mouse position within canvas
+  let rel_x = mouse_x - ctrl[18]
+  let rel_y = mouse_y - ctrl[19]
+  let cw = ctrl[20]
+  let ch = ctrl[21]
+
+  // --- PAN (click + drag) ---
+  if mouse_pressed == 1.0 && in_cvs == 1.0
+    if prev_pressed == 0.0
+      // Mouse just pressed — start pan
+      ctrl[0] = 1.0
+      ctrl[1] = rel_x
+      ctrl[2] = rel_y
+    elif ctrl[0] == 1.0
+      // Continue pan — compute delta
+      let dx = rel_x - ctrl[1]
+      let dy = rel_y - ctrl[2]
+
+      // Convert pixel delta to data delta
+      let x_range = ctrl[15] - ctrl[14]
+      let y_range = ctrl[17] - ctrl[16]
+      if cw > 0.0 && ch > 0.0
+        let data_dx = 0.0 - dx / cw * x_range
+        let data_dy = dy / ch * y_range
+
+        ctrl[14] = ctrl[14] + data_dx
+        ctrl[15] = ctrl[15] + data_dx
+        ctrl[16] = ctrl[16] + data_dy
+        ctrl[17] = ctrl[17] + data_dy
+      end
+
+      ctrl[1] = rel_x
+      ctrl[2] = rel_y
+    end
+  else
+    ctrl[0] = 0.0
+  end
+
+  // --- ZOOM (scroll wheel) ---
+  if scroll_delta != 0.0 && in_cvs == 1.0
+    let mut factor = 1.0
+    if scroll_delta > 0.0
+      factor = 0.9
+    else
+      factor = 1.1
+    end
+
+    // Zoom centered on mouse position
+    let t_x = rel_x / cw
+    let t_y = 1.0 - rel_y / ch
+
+    let x_min = ctrl[14]
+    let x_max = ctrl[15]
+    let y_min = ctrl[16]
+    let y_max = ctrl[17]
+
+    let x_center = x_min + t_x * (x_max - x_min)
+    let y_center = y_min + t_y * (y_max - y_min)
+
+    let new_x_half = (x_max - x_min) * factor / 2.0
+    let new_y_half = (y_max - y_min) * factor / 2.0
+
+    ctrl[14] = x_center - new_x_half
+    ctrl[15] = x_center + new_x_half
+    ctrl[16] = y_center - new_y_half
+    ctrl[17] = y_center + new_y_half
+
+    ctrl[3] = ctrl[3] * factor
+  end
+
+  // --- INSPECT (single click without drag) ---
+  if mouse_pressed == 0.0 && prev_pressed == 1.0 && in_cvs == 1.0
+    // Mouse released — if no significant drag, it's an inspect click
+    let drag_dist = (rel_x - ctrl[1]) * (rel_x - ctrl[1]) + (rel_y - ctrl[2]) * (rel_y - ctrl[2])
+    if drag_dist < 25.0
+      // Convert screen to data coords
+      let x_range = ctrl[15] - ctrl[14]
+      let y_range = ctrl[17] - ctrl[16]
+      ctrl[11] = ctrl[14] + rel_x / cw * x_range
+      ctrl[12] = ctrl[16] + (1.0 - rel_y / ch) * y_range
+      ctrl[13] = 1.0
+    end
+  end
+
+  // --- RESET (R key) ---
+  if key_pressed == 82.0 || key_pressed == 114.0
+    // 'R' or 'r' — reset handled by caller via ctrl_needs_reset
+    ctrl[3] = 1.0
+  end
+
+  // Store previous state
+  ctrl[22] = mouse_x
+  ctrl[23] = mouse_y
+  ctrl[24] = mouse_pressed
+
+  return ctrl
+end
+
+fn ctrl_apply(ctrl, config)
+  // Apply viewport from control state to config
+  config[0] = ctrl[14]
+  config[1] = ctrl[15]
+  config[2] = ctrl[16]
+  config[3] = ctrl[17]
+  return config
+end
+
+fn ctrl_get_inspect(ctrl)
+  // Returns [active, data_x, data_y]
+  return [ctrl[13], ctrl[11], ctrl[12]]
+end
+
+fn ctrl_clear_inspect(ctrl)
+  ctrl[13] = 0.0
+  return ctrl
+end
+
+fn ctrl_reset_viewport(ctrl, config)
+  // Reset to original viewport from config
+  ctrl[14] = config[0]
+  ctrl[15] = config[1]
+  ctrl[16] = config[2]
+  ctrl[17] = config[3]
+  ctrl[3] = 1.0
+  return ctrl
+end
+
+fn ctrl_draw_inspect_tooltip(cvs, ctrl, cw, ch)
+  // Draw inspect tooltip if active
+  if ctrl[13] != 1.0
+    return 0.0
+  end
+
+  let data_x = ctrl[11]
+  let data_y = ctrl[12]
+
+  // Convert data coords back to screen
+  let x_range = ctrl[15] - ctrl[14]
+  let y_range = ctrl[17] - ctrl[16]
+  if x_range <= 0.0 || y_range <= 0.0
+    return 0.0
+  end
+
+  let sx = (data_x - ctrl[14]) / x_range * cw
+  let sy = ch - (data_y - ctrl[16]) / y_range * ch
+
+  // Draw crosshair
+  let _h = gui_canvas_line(cvs, sx - 8.0, sy, sx + 8.0, sy, 255.0, 255.0, 0.0)
+  let _v = gui_canvas_line(cvs, sx, sy - 8.0, sx, sy + 8.0, 255.0, 255.0, 0.0)
+
+  // Draw tooltip background
+  let tx = sx + 12.0
+  let ty = sy - 20.0
+  let _bg = gui_canvas_fill(cvs, tx, ty, 120.0, 30.0, 40.0, 40.0, 50.0)
+
+  return 1.0
+end

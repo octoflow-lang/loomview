@@ -1,0 +1,148 @@
+// recipe_fft_viz.flow — Live Spectrogram Recipe
+//
+// Generates a synthetic audio signal (sum of sine waves) and displays
+// its frequency spectrum as a scrolling spectrogram heatmap.
+//
+// Uses a simple DFT (not FFT) for small window sizes.
+//
+// Usage:
+//   use "recipes/recipe_fft_viz"
+//   recipe_fft_run()
+
+use "gui/gui_core"
+use "gui/canvas"
+use "src/data"
+use "src/config"
+use "src/render"
+use "src/app"
+use "src/palette"
+
+let FFT_WINDOW = 64.0
+let FFT_COLUMNS = 120.0
+
+fn _fft_generate_signal(time, freq1, freq2, freq3)
+  // Generate a window of signal: sum of 3 sine waves
+  let mut signal = []
+  let pi2 = 6.283185
+  let mut i = 0.0
+  while i < FFT_WINDOW
+    let t = time + i / 1000.0
+    let v = sin(pi2 * freq1 * t) + 0.5 * sin(pi2 * freq2 * t) + 0.3 * sin(pi2 * freq3 * t)
+    push(signal, v)
+    i = i + 1.0
+  end
+  return signal
+end
+
+fn _fft_magnitude(signal)
+  // Compute DFT magnitude spectrum for half of bins (real signal symmetry)
+  let n = len(signal)
+  let half = floor(n / 2.0)
+  let mut magnitudes = []
+
+  let pi2 = 6.283185
+
+  let mut k = 0.0
+  while k < half
+    let mut re = 0.0
+    let mut im = 0.0
+    let mut i = 0.0
+    while i < n
+      let angle = pi2 * k * i / n
+      re = re + signal[int(i)] * cos(angle)
+      im = im - signal[int(i)] * sin(angle)
+      i = i + 1.0
+    end
+    let mag = sqrt(re * re + im * im) / n
+    push(magnitudes, mag)
+    k = k + 1.0
+  end
+
+  return magnitudes
+end
+
+fn recipe_fft_run()
+  let n_bins = floor(FFT_WINDOW / 2.0)
+
+  print("LoomView Recipe: FFT Spectrogram ({FFT_WINDOW}-point DFT, {FFT_COLUMNS} columns)")
+
+  // Spectrogram buffer: n_bins rows x FFT_COLUMNS columns
+  // Scrolls left as new columns arrive
+  let grid_w = FFT_COLUMNS
+  let grid_h = n_bins
+  let n_cells = grid_w * grid_h
+
+  let mut spectrogram = []
+  let mut i = 0.0
+  while i < n_cells
+    push(spectrogram, 0.0)
+    i = i + 1.0
+  end
+
+  let mut config = viz_auto_config(spectrogram, VIZ_HEATMAP)
+  config[4] = PAL_PLASMA
+  config[5] = grid_w
+  config[6] = grid_h
+
+  let _cvs = app_open("LoomView - FFT Spectrogram", 1000.0, 700.0)
+  app_add_transport()
+  app_add_record_button()
+
+  let _f1_s = app_add_slider("Freq 1 (Hz)", 50.0, 500.0, 200.0)
+  let _f2_s = app_add_slider("Freq 2 (Hz)", 50.0, 500.0, 350.0)
+  let _f3_s = app_add_slider("Freq 3 (Hz)", 50.0, 500.0, 100.0)
+
+  let _r = app_update(spectrogram, VIZ_HEATMAP, config)
+
+  let mut time = 0.0
+  let mut step_count = 0.0
+
+  while app_running() == 1.0
+    gui_update()
+
+    let playing = app_is_playing()
+    let speed = app_speed()
+
+    if playing == 1.0
+      // Get frequencies from sliders
+      let freq1 = app_get_slider(0.0)
+      let freq2 = app_get_slider(1.0)
+      let freq3 = app_get_slider(2.0)
+
+      // Generate signal and compute DFT
+      let signal = _fft_generate_signal(time, freq1, freq2, freq3)
+      let mags = _fft_magnitude(signal)
+
+      // Scroll spectrogram left by one column
+      let mut row = 0.0
+      while row < grid_h
+        let mut col = 0.0
+        while col < grid_w - 1.0
+          let dst = int(row * grid_w + col)
+          let src = int(row * grid_w + col + 1.0)
+          if dst < n_cells && src < n_cells
+            spectrogram[dst] = spectrogram[src]
+          end
+          col = col + 1.0
+        end
+        // New column (rightmost): magnitude for this frequency bin
+        let dst2 = int(row * grid_w + grid_w - 1.0)
+        if int(row) < len(mags) && dst2 < n_cells
+          spectrogram[dst2] = mags[int(row)]
+        end
+        row = row + 1.0
+      end
+
+      // Update display
+      let _r2 = app_update(spectrogram, VIZ_HEATMAP, config)
+
+      time = time + speed * 0.05
+      step_count = step_count + 1.0
+
+      app_set_status("Time: " + str(floor(time * 100.0) / 100.0) + "s | F1={freq1} F2={freq2} F3={freq3}")
+    end
+  end
+
+  print("FFT spectrogram ended after {step_count} steps")
+  return 0.0
+end

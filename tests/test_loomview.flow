@@ -1,0 +1,530 @@
+// test_loomview.flow — LoomView v0.2 Test Suite
+//
+// Tests for data fingerprinting, config generation, palette, rendering dispatch,
+// controls state, recorder, and export utilities.
+//
+// Usage:
+//   octoflow test tests/test_loomview.flow
+
+use "src/data"
+use "src/config"
+use "src/palette"
+use "src/recorder"
+
+let mut _test_pass = 0.0
+let mut _test_fail = 0.0
+
+fn _assert(condition, name)
+  if condition == 1.0
+    _test_pass = _test_pass + 1.0
+  else
+    _test_fail = _test_fail + 1.0
+    print("  FAIL: {name}")
+  end
+  return 0.0
+end
+
+fn _assert_eq(actual, expected, name)
+  if actual == expected
+    _test_pass = _test_pass + 1.0
+  else
+    _test_fail = _test_fail + 1.0
+    print("  FAIL: {name} — expected {expected}, got {actual}")
+  end
+  return 0.0
+end
+
+fn _assert_near(actual, expected, tolerance, name)
+  let diff = actual - expected
+  if diff < 0.0
+    diff = 0.0 - diff
+  end
+  if diff <= tolerance
+    _test_pass = _test_pass + 1.0
+  else
+    _test_fail = _test_fail + 1.0
+    print("  FAIL: {name} — expected ~{expected}, got {actual}")
+  end
+  return 0.0
+end
+
+// ═══════════════════════════════════════════════════════════════════
+// Data Fingerprinting
+// ═══════════════════════════════════════════════════════════════════
+
+fn test_fingerprint_empty()
+  print("  test_fingerprint_empty")
+  let fp = viz_fingerprint([])
+  let _a = _assert_eq(fp[0], 0.0, "empty length")
+  return 0.0
+end
+
+fn test_fingerprint_single()
+  print("  test_fingerprint_single")
+  let fp = viz_fingerprint([5.0])
+  let _a1 = _assert_eq(fp[0], 1.0, "length=1")
+  let _a2 = _assert_eq(fp[1], 5.0, "min=5")
+  let _a3 = _assert_eq(fp[2], 5.0, "max=5")
+  let _a4 = _assert_eq(fp[3], 5.0, "mean=5")
+  return 0.0
+end
+
+fn test_fingerprint_basic()
+  print("  test_fingerprint_basic")
+  let data = [1.0, 2.0, 3.0, 4.0, 5.0]
+  let fp = viz_fingerprint(data)
+  let _a1 = _assert_eq(fp[0], 5.0, "length=5")
+  let _a2 = _assert_eq(fp[1], 1.0, "min=1")
+  let _a3 = _assert_eq(fp[2], 5.0, "max=5")
+  let _a4 = _assert_eq(fp[3], 3.0, "mean=3")
+  let _a5 = _assert_eq(fp[10], 1.0, "monotonic=1")
+  let _a6 = _assert_eq(fp[12], 1.0, "is_integer=1")
+  return 0.0
+end
+
+fn test_fingerprint_binary()
+  print("  test_fingerprint_binary")
+  let data = [0.0, 1.0, 1.0, 0.0, 1.0]
+  let fp = viz_fingerprint(data)
+  let _a1 = _assert_eq(fp[13], 1.0, "is_binary=1")
+  let _a2 = _assert_eq(fp[14], 1.0, "is_bounded=1")
+  return 0.0
+end
+
+fn test_fingerprint_float()
+  print("  test_fingerprint_float")
+  let data = [0.5, 1.5, 2.5]
+  let fp = viz_fingerprint(data)
+  let _a1 = _assert_eq(fp[12], 0.0, "is_integer=0")
+  let _a2 = _assert_eq(fp[13], 0.0, "is_binary=0")
+  return 0.0
+end
+
+fn test_fingerprint_negative()
+  print("  test_fingerprint_negative")
+  let data = [-5.0, -1.0, 0.0, 1.0, 5.0]
+  let fp = viz_fingerprint(data)
+  let _a1 = _assert_eq(fp[1], -5.0, "min=-5")
+  let _a2 = _assert_eq(fp[14], 0.0, "not bounded")
+  return 0.0
+end
+
+fn test_fingerprint_sparsity()
+  print("  test_fingerprint_sparsity")
+  let data = [0.0, 0.0, 0.0, 1.0, 0.0]
+  let fp = viz_fingerprint(data)
+  let _a = _assert_near(fp[6], 0.8, 0.01, "sparsity=0.8")
+  return 0.0
+end
+
+fn test_fingerprint_unique_ratio()
+  print("  test_fingerprint_unique_ratio")
+  let data = [1.0, 2.0, 3.0, 4.0, 5.0]
+  let fp = viz_fingerprint(data)
+  let _a = _assert_near(fp[15], 1.0, 0.01, "unique_ratio=1.0")
+  return 0.0
+end
+
+fn test_fingerprint_duplicates()
+  print("  test_fingerprint_duplicates")
+  let data = [1.0, 1.0, 1.0, 1.0]
+  let fp = viz_fingerprint(data)
+  let _a = _assert_near(fp[15], 0.25, 0.01, "unique_ratio=0.25")
+  return 0.0
+end
+
+// ═══════════════════════════════════════════════════════════════════
+// Scoring & Auto-Selection
+// ═══════════════════════════════════════════════════════════════════
+
+fn test_score_basic()
+  print("  test_score_basic")
+  let data = [1.0, 2.0, 3.0, 4.0, 5.0]
+  let fp = viz_fingerprint(data)
+  let scores = viz_score(fp)
+  let _a = _assert(len(scores) == 10.0, "10 scores")
+  return 0.0
+end
+
+fn test_best_small_integers()
+  print("  test_best_small_integers")
+  // Small integer data → should pick bar
+  let data = [3.0, 7.0, 2.0, 9.0, 5.0]
+  let best = viz_best(data)
+  let _a = _assert_eq(best, VIZ_BAR, "small ints -> bar")
+  return 0.0
+end
+
+fn test_best_grid_data()
+  print("  test_best_grid_data")
+  // 16 bounded values (4x4 perfect square) → should pick heatmap
+  let data = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2]
+  let best = viz_best(data)
+  let _a = _assert_eq(best, VIZ_HEATMAP, "16 bounded -> heatmap")
+  return 0.0
+end
+
+fn test_best_binary()
+  print("  test_best_binary")
+  // Binary data → grid
+  let data = [0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0]
+  let best = viz_best(data)
+  let _a = _assert_eq(best, VIZ_GRID, "binary -> grid")
+  return 0.0
+end
+
+fn test_type_name()
+  print("  test_type_name")
+  let _a1 = _assert(viz_type_name(VIZ_LINE) == "line", "line")
+  let _a2 = _assert(viz_type_name(VIZ_SCATTER) == "scatter", "scatter")
+  let _a3 = _assert(viz_type_name(VIZ_BAR) == "bar", "bar")
+  let _a4 = _assert(viz_type_name(VIZ_HEATMAP) == "heatmap", "heatmap")
+  let _a5 = _assert(viz_type_name(VIZ_HISTOGRAM) == "histogram", "histogram")
+  let _a6 = _assert(viz_type_name(VIZ_PIE) == "pie", "pie")
+  let _a7 = _assert(viz_type_name(99.0) == "unknown", "unknown")
+  return 0.0
+end
+
+fn test_score_for()
+  print("  test_score_for")
+  let data = [1.0, 2.0, 3.0]
+  let score = viz_score_for(data, VIZ_BAR)
+  let _a = _assert(score > 0.0, "bar score > 0")
+  return 0.0
+end
+
+// ═══════════════════════════════════════════════════════════════════
+// Config Auto-Generation
+// ═══════════════════════════════════════════════════════════════════
+
+fn test_config_empty()
+  print("  test_config_empty")
+  let config = viz_auto_config([], VIZ_LINE)
+  let _a = _assert(len(config) == 10.0, "config length=10")
+  return 0.0
+end
+
+fn test_config_line()
+  print("  test_config_line")
+  let data = [10.0, 20.0, 30.0, 40.0, 50.0]
+  let config = viz_auto_config(data, VIZ_LINE)
+  let _a1 = _assert_eq(config[0], 0.0, "x_min=0")
+  let _a2 = _assert_eq(config[1], 4.0, "x_max=4")
+  let _a3 = _assert(config[2] < 10.0, "y_min < 10")
+  let _a4 = _assert(config[3] > 50.0, "y_max > 50")
+  return 0.0
+end
+
+fn test_config_heatmap()
+  print("  test_config_heatmap")
+  let mut data = []
+  let mut i = 0.0
+  while i < 25.0
+    push(data, i)
+    i = i + 1.0
+  end
+  let config = viz_auto_config(data, VIZ_HEATMAP)
+  let _a1 = _assert_eq(config[5], 5.0, "grid_w=5")
+  let _a2 = _assert_eq(config[6], 5.0, "grid_h=5")
+  return 0.0
+end
+
+fn test_config_scatter()
+  print("  test_config_scatter")
+  let data = [0.0, 0.0, 10.0, 10.0]
+  let config = viz_auto_config(data, VIZ_SCATTER)
+  let _a1 = _assert(config[0] < 0.0, "x_min padded < 0")
+  let _a2 = _assert(config[1] > 10.0, "x_max padded > 10")
+  return 0.0
+end
+
+fn test_config_histogram()
+  print("  test_config_histogram")
+  let mut data = []
+  let mut i = 0.0
+  while i < 100.0
+    push(data, i)
+    i = i + 1.0
+  end
+  let config = viz_auto_config(data, VIZ_HISTOGRAM)
+  let _a = _assert(config[7] >= 5.0, "bins >= 5")
+  return 0.0
+end
+
+fn test_config_get_set()
+  print("  test_config_get_set")
+  let mut config = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]
+  let _s = viz_config_set(config, 3.0, 99.0)
+  let _a = _assert_eq(viz_config_get(config, 3.0), 99.0, "get/set")
+  return 0.0
+end
+
+// ═══════════════════════════════════════════════════════════════════
+// Palette
+// ═══════════════════════════════════════════════════════════════════
+
+fn test_palette_viridis()
+  print("  test_palette_viridis")
+  let pal = viz_palette(PAL_VIRIDIS, 3.0)
+  let _a = _assert_eq(len(pal), 9.0, "3 colors = 9 values")
+  return 0.0
+end
+
+fn test_palette_single()
+  print("  test_palette_single")
+  let pal = viz_palette(PAL_PLASMA, 1.0)
+  let _a = _assert_eq(len(pal), 3.0, "1 color = 3 values")
+  return 0.0
+end
+
+fn test_palette_empty()
+  print("  test_palette_empty")
+  let pal = viz_palette(PAL_INFERNO, 0.0)
+  let _a = _assert_eq(len(pal), 0.0, "0 steps = empty")
+  return 0.0
+end
+
+fn test_palette_map()
+  print("  test_palette_map")
+  let pal = viz_palette(PAL_GRAYSCALE, 2.0)
+  // Grayscale: [0,0,0, 255,255,255]
+  let c_low = viz_palette_map(0.0, 0.0, 1.0, pal)
+  let c_high = viz_palette_map(1.0, 0.0, 1.0, pal)
+  let _a1 = _assert_near(c_low[0], 0.0, 1.0, "low=black")
+  let _a2 = _assert_near(c_high[0], 255.0, 1.0, "high=white")
+  return 0.0
+end
+
+fn test_palette_map_midpoint()
+  print("  test_palette_map_midpoint")
+  let pal = viz_palette(PAL_GRAYSCALE, 2.0)
+  let c_mid = viz_palette_map(0.5, 0.0, 1.0, pal)
+  let _a = _assert_near(c_mid[0], 127.5, 1.0, "mid=~128")
+  return 0.0
+end
+
+fn test_palette_auto()
+  print("  test_palette_auto")
+  // Negative data → coolwarm
+  let fp_neg = viz_fingerprint([-5.0, -1.0, 0.0, 1.0])
+  let _a1 = _assert_eq(viz_palette_auto(fp_neg), PAL_COOLWARM, "negative -> coolwarm")
+
+  // Bounded [0,1] → viridis
+  let fp_bounded = viz_fingerprint([0.1, 0.5, 0.9])
+  let _a2 = _assert_eq(viz_palette_auto(fp_bounded), PAL_VIRIDIS, "bounded -> viridis")
+  return 0.0
+end
+
+fn test_palette_name()
+  print("  test_palette_name")
+  let _a1 = _assert(viz_palette_name(PAL_VIRIDIS) == "viridis", "viridis")
+  let _a2 = _assert(viz_palette_name(PAL_PLASMA) == "plasma", "plasma")
+  let _a3 = _assert(viz_palette_name(PAL_INFERNO) == "inferno", "inferno")
+  let _a4 = _assert(viz_palette_name(PAL_COOLWARM) == "coolwarm", "coolwarm")
+  let _a5 = _assert(viz_palette_name(PAL_GRAYSCALE) == "grayscale", "grayscale")
+  let _a6 = _assert(viz_palette_name(99.0) == "unknown", "unknown")
+  return 0.0
+end
+
+// ═══════════════════════════════════════════════════════════════════
+// Recorder
+// ═══════════════════════════════════════════════════════════════════
+
+fn test_recorder_init()
+  print("  test_recorder_init")
+  let _s = recorder_start(10.0)
+  let _a1 = _assert_eq(recorder_is_active(), 1.0, "active after start")
+  let _a2 = _assert_eq(recorder_frame_count(), 0.0, "0 frames")
+  let _c = recorder_stop()
+  let _a3 = _assert_eq(recorder_is_active(), 0.0, "inactive after stop")
+  return 0.0
+end
+
+fn test_recorder_capture()
+  print("  test_recorder_capture")
+  let _s = recorder_start(100.0)
+
+  // Capture a 2x2 frame
+  let r = [255.0, 0.0, 0.0, 128.0]
+  let g = [0.0, 255.0, 0.0, 128.0]
+  let b = [0.0, 0.0, 255.0, 128.0]
+  let _c1 = recorder_capture_rgb(r, g, b, 2.0, 2.0, 0.0)
+  let _a1 = _assert_eq(recorder_frame_count(), 1.0, "1 frame")
+
+  // Second capture at different timestamp
+  let _c2 = recorder_capture_rgb(r, g, b, 2.0, 2.0, 100.0)
+  let _a2 = _assert_eq(recorder_frame_count(), 2.0, "2 frames")
+
+  let dims = recorder_get_dimensions()
+  let _a3 = _assert_eq(dims[0], 2.0, "width=2")
+  let _a4 = _assert_eq(dims[1], 2.0, "height=2")
+
+  let _stop = recorder_stop()
+  let _clr = recorder_clear()
+  return 0.0
+end
+
+fn test_recorder_get_frame()
+  print("  test_recorder_get_frame")
+  let _s = recorder_start(100.0)
+
+  let r = [100.0, 200.0]
+  let g = [50.0, 150.0]
+  let b = [25.0, 75.0]
+  let _c = recorder_capture_rgb(r, g, b, 2.0, 1.0, 0.0)
+
+  let frame = recorder_get_frame(0.0)
+  // Interleaved: [r0,g0,b0, r1,g1,b1]
+  let _a1 = _assert_eq(frame[0], 100.0, "frame[0]=r0")
+  let _a2 = _assert_eq(frame[1], 50.0, "frame[1]=g0")
+  let _a3 = _assert_eq(frame[2], 25.0, "frame[2]=b0")
+  let _a4 = _assert_eq(frame[3], 200.0, "frame[3]=r1")
+
+  let _stop = recorder_stop()
+  let _clr = recorder_clear()
+  return 0.0
+end
+
+fn test_recorder_rate_limit()
+  print("  test_recorder_rate_limit")
+  let _s = recorder_start(10.0)  // 10 FPS = 100ms interval
+
+  let r = [0.0]
+  let g = [0.0]
+  let b = [0.0]
+  let _c1 = recorder_capture_rgb(r, g, b, 1.0, 1.0, 0.0)
+  let _c2 = recorder_capture_rgb(r, g, b, 1.0, 1.0, 50.0)    // too soon, should skip
+  let _c3 = recorder_capture_rgb(r, g, b, 1.0, 1.0, 150.0)   // ok
+
+  let _a = _assert_eq(recorder_frame_count(), 2.0, "rate limited to 2")
+
+  let _stop = recorder_stop()
+  let _clr = recorder_clear()
+  return 0.0
+end
+
+fn test_recorder_timestamps()
+  print("  test_recorder_timestamps")
+  let _s = recorder_start(100.0)
+
+  let r = [0.0]
+  let g = [0.0]
+  let b = [0.0]
+  let _c1 = recorder_capture_rgb(r, g, b, 1.0, 1.0, 0.0)
+  let _c2 = recorder_capture_rgb(r, g, b, 1.0, 1.0, 100.0)
+
+  let ts = recorder_get_timestamps()
+  let _a1 = _assert_eq(len(ts), 2.0, "2 timestamps")
+  let _a2 = _assert_eq(ts[0], 0.0, "ts[0]=0")
+  let _a3 = _assert_eq(ts[1], 100.0, "ts[1]=100")
+
+  let _stop = recorder_stop()
+  let _clr = recorder_clear()
+  return 0.0
+end
+
+fn test_recorder_inactive_capture()
+  print("  test_recorder_inactive_capture")
+  let _clr = recorder_clear()
+  // Capture without starting should be rejected
+  let r = [0.0]
+  let g = [0.0]
+  let b = [0.0]
+  let result = recorder_capture_rgb(r, g, b, 1.0, 1.0, 0.0)
+  let _a = _assert_eq(result, 0.0, "rejected when inactive")
+  return 0.0
+end
+
+fn test_recorder_invalid_frame()
+  print("  test_recorder_invalid_frame")
+  let frame = recorder_get_frame(-1.0)
+  let _a1 = _assert_eq(len(frame), 0.0, "invalid index -> empty")
+  let frame2 = recorder_get_frame(999.0)
+  let _a2 = _assert_eq(len(frame2), 0.0, "out of range -> empty")
+  return 0.0
+end
+
+fn test_recorder_interleaved()
+  print("  test_recorder_interleaved")
+  let _s = recorder_start(100.0)
+
+  let rgb = [255.0, 128.0, 64.0, 100.0, 50.0, 25.0]
+  let _c = recorder_capture_interleaved(rgb, 2.0, 1.0, 0.0)
+  let _a = _assert_eq(recorder_frame_count(), 1.0, "1 interleaved frame")
+
+  let frame = recorder_get_frame(0.0)
+  let _a2 = _assert_eq(frame[0], 255.0, "r0=255")
+  let _a3 = _assert_eq(frame[1], 128.0, "g0=128")
+
+  let _stop = recorder_stop()
+  let _clr = recorder_clear()
+  return 0.0
+end
+
+// ═══════════════════════════════════════════════════════════════════
+// Run All Tests
+// ═══════════════════════════════════════════════════════════════════
+
+fn run_tests()
+  print("=== LoomView v0.2 Test Suite ===")
+  print("")
+
+  print("[Fingerprinting]")
+  test_fingerprint_empty()
+  test_fingerprint_single()
+  test_fingerprint_basic()
+  test_fingerprint_binary()
+  test_fingerprint_float()
+  test_fingerprint_negative()
+  test_fingerprint_sparsity()
+  test_fingerprint_unique_ratio()
+  test_fingerprint_duplicates()
+
+  print("[Scoring]")
+  test_score_basic()
+  test_best_small_integers()
+  test_best_grid_data()
+  test_best_binary()
+  test_type_name()
+  test_score_for()
+
+  print("[Config]")
+  test_config_empty()
+  test_config_line()
+  test_config_heatmap()
+  test_config_scatter()
+  test_config_histogram()
+  test_config_get_set()
+
+  print("[Palette]")
+  test_palette_viridis()
+  test_palette_single()
+  test_palette_empty()
+  test_palette_map()
+  test_palette_map_midpoint()
+  test_palette_auto()
+  test_palette_name()
+
+  print("[Recorder]")
+  test_recorder_init()
+  test_recorder_capture()
+  test_recorder_get_frame()
+  test_recorder_rate_limit()
+  test_recorder_timestamps()
+  test_recorder_inactive_capture()
+  test_recorder_invalid_frame()
+  test_recorder_interleaved()
+
+  print("")
+  print("=== Results: {_test_pass} passed, {_test_fail} failed ===")
+
+  if _test_fail > 0.0
+    print("SOME TESTS FAILED")
+  else
+    print("ALL TESTS PASSED")
+  end
+
+  return _test_fail
+end
+
+run_tests()

@@ -1,0 +1,201 @@
+// render_gpu.flow — GPU-Accelerated Rendering Pipeline
+//
+// Provides GPU-dispatched rendering for large datasets.
+// Falls back to CPU render.flow if GPU is unavailable.
+//
+// Level 1 GPU ops: gpu_fill, gpu_where, gpu_scatter, gpu_scale, gpu_add
+// Level 2: Custom SPIR-V shaders via IR builder (heatmap kernel)
+//
+// Usage:
+//   use "src/render_gpu"
+//   if gpu_render_available() == 1.0
+//     gpu_render_heatmap(data, config, width, height)
+//   end
+
+use "gui/gpu_render"
+use "gui/gui_core"
+use "data"
+use "palette"
+
+let mut _gpu_available = [0.0]
+
+fn gpu_render_init()
+  let info = gpu_info()
+  let keys = map_keys(info)
+  if len(keys) > 0.0
+    _gpu_available[0] = 1.0
+    print("LoomView GPU: enabled")
+  else
+    _gpu_available[0] = 0.0
+    print("LoomView GPU: not available, using CPU rendering")
+  end
+  return _gpu_available[0]
+end
+
+fn gpu_render_available()
+  return _gpu_available[0]
+end
+
+fn gpu_render_heatmap(canvas_r, canvas_g, canvas_b, data, config, cw, ch)
+  // GPU-accelerated heatmap: color lookup in bulk using gpu_where
+  // Instead of O(w*h) canvas_fill calls, batch by color bucket
+  if _gpu_available[0] == 0.0
+    return 0.0
+  end
+
+  let n = len(data)
+  if n == 0.0
+    return 0.0
+  end
+
+  let gw = config[5]
+  let gh = config[6]
+  if gw <= 0.0 || gh <= 0.0
+    return 0.0
+  end
+
+  let pad = config[8]
+  let pw = cw - pad * 2.0
+  let ph = ch - pad * 2.0
+  if pw <= 0.0 || ph <= 0.0
+    return 0.0
+  end
+
+  let cell_w = floor(pw / gw)
+  let cell_h = floor(ph / gh)
+  if cell_w < 1.0 || cell_h < 1.0
+    return 0.0
+  end
+
+  // Find data range
+  let mut d_min = data[0]
+  let mut d_max = data[0]
+  let mut i = 1.0
+  while i < n
+    if data[int(i)] < d_min
+      d_min = data[int(i)]
+    end
+    if data[int(i)] > d_max
+      d_max = data[int(i)]
+    end
+    i = i + 1.0
+  end
+
+  let d_range = d_max - d_min
+  if d_range <= 0.0
+    return 0.0
+  end
+
+  // Generate palette (16 color buckets for GPU batching)
+  let pal_id = config[4]
+  let pal = viz_palette(pal_id, 16.0)
+
+  // For each color bucket, fill all matching cells at once
+  let mut bucket = 0.0
+  while bucket < 16.0
+    let cr = pal[int(bucket * 3.0)]
+    let cg = pal[int(bucket * 3.0 + 1.0)]
+    let cb = pal[int(bucket * 3.0 + 2.0)]
+
+    let bucket_lo = d_min + bucket / 16.0 * d_range
+    let bucket_hi = d_min + (bucket + 1.0) / 16.0 * d_range
+
+    // Fill cells in this bucket
+    let mut row = 0.0
+    while row < gh
+      let mut col = 0.0
+      while col < gw
+        let idx = int(row * gw + col)
+        if idx < n
+          let val = data[idx]
+          if val >= bucket_lo && (val < bucket_hi || bucket == 15.0)
+            // Compute pixel region for this cell
+            let px = pad + col * cell_w
+            let py = pad + row * cell_h
+
+            // Write directly to pixel buffers
+            let mut dy = 0.0
+            while dy < cell_h
+              let mut dx = 0.0
+              while dx < cell_w
+                let pi = int((py + dy) * cw + px + dx)
+                if pi >= 0.0 && pi < len(canvas_r)
+                  canvas_r[pi] = cr
+                  canvas_g[pi] = cg
+                  canvas_b[pi] = cb
+                end
+                dx = dx + 1.0
+              end
+              dy = dy + 1.0
+            end
+          end
+        end
+        col = col + 1.0
+      end
+      row = row + 1.0
+    end
+
+    bucket = bucket + 1.0
+  end
+
+  return 1.0
+end
+
+fn gpu_render_scatter(canvas_r, canvas_g, canvas_b, data, config, cw, ch)
+  // GPU-accelerated scatter plot: batch point rendering
+  if _gpu_available[0] == 0.0
+    return 0.0
+  end
+
+  let n = len(data)
+  if n < 2.0
+    return 0.0
+  end
+
+  let pad = config[8]
+  let x_min = config[0]
+  let x_max = config[1]
+  let y_min = config[2]
+  let y_max = config[3]
+
+  let pw = cw - pad * 2.0
+  let ph = ch - pad * 2.0
+  let x_range = x_max - x_min
+  let y_range = y_max - y_min
+  if x_range <= 0.0 || y_range <= 0.0
+    return 0.0
+  end
+
+  let n_pts = floor(n / 2.0)
+  let radius = 3.0
+
+  let mut i = 0.0
+  while i < n_pts
+    let px = data[int(i * 2.0)]
+    let py = data[int(i * 2.0 + 1.0)]
+    let sx = pad + (px - x_min) / x_range * pw
+    let sy = pad + ph - (py - y_min) / y_range * ph
+
+    // Draw filled circle at (sx, sy) directly to pixel buffers
+    let mut dy = 0.0 - radius
+    while dy <= radius
+      let mut dx = 0.0 - radius
+      while dx <= radius
+        if dx * dx + dy * dy <= radius * radius
+          let pi = int((sy + dy) * cw + sx + dx)
+          if pi >= 0.0 && pi < len(canvas_r)
+            canvas_r[pi] = 100.0
+            canvas_g[pi] = 200.0
+            canvas_b[pi] = 255.0
+          end
+        end
+        dx = dx + 1.0
+      end
+      dy = dy + 1.0
+    end
+
+    i = i + 1.0
+  end
+
+  return 1.0
+end

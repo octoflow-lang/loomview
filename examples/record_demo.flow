@@ -1,0 +1,106 @@
+// record_demo.flow — Recording and export demo
+//
+// Generates a simple animation, records it, and exports as GIF and HTML.
+//
+// Usage:
+//   octoflow run examples/record_demo.flow
+
+use "src/data"
+use "src/config"
+use "src/render"
+use "src/app"
+use "src/palette"
+use "src/recorder"
+use "src/export/gif_export"
+use "src/export/html_export"
+
+fn main()
+  print("LoomView Record Demo")
+  print("  Generating animated bar chart...")
+
+  // Generate 30 frames of an animated bar chart
+  let n_bars = 10.0
+  let n_frames = 30.0
+
+  let _rec = recorder_start(10.0)
+
+  let mut frame = 0.0
+  while frame < n_frames
+    // Create bar data that changes each frame
+    let mut data = []
+    let mut i = 0.0
+    while i < n_bars
+      let t = frame / n_frames
+      let val = 5.0 + 20.0 * sin(t * 6.283 + i * 0.6)
+      if val < 0.0
+        val = 0.0
+      end
+      push(data, val)
+      i = i + 1.0
+    end
+
+    // Render to a small buffer for recording
+    let w = 200.0
+    let h = 150.0
+    let n_pixels = w * h
+
+    // Simple bar rendering to flat RGB buffer
+    let mut r_buf = []
+    let mut g_buf = []
+    let mut b_buf = []
+    i = 0.0
+    while i < n_pixels
+      push(r_buf, 15.0)
+      push(g_buf, 15.0)
+      push(b_buf, 25.0)
+      i = i + 1.0
+    end
+
+    // Draw bars into buffer
+    let bar_w = floor(w / n_bars)
+    i = 0.0
+    while i < n_bars
+      let bar_h = floor(data[int(i)] / 30.0 * h)
+      let bx = floor(i * bar_w)
+
+      let pal = viz_palette(PAL_VIRIDIS, n_bars)
+      let cr = pal[int(i * 3.0)]
+      let cg = pal[int(i * 3.0 + 1.0)]
+      let cb = pal[int(i * 3.0 + 2.0)]
+
+      let mut dy = 0.0
+      while dy < bar_h
+        let mut dx = 0.0
+        while dx < bar_w - 1.0
+          let px = int(bx + dx)
+          let py = int(h - 1.0 - dy)
+          let pi = int(py * w + px)
+          if pi >= 0.0 && pi < n_pixels
+            r_buf[pi] = cr
+            g_buf[pi] = cg
+            b_buf[pi] = cb
+          end
+          dx = dx + 1.0
+        end
+        dy = dy + 1.0
+      end
+      i = i + 1.0
+    end
+
+    // Capture frame
+    let _c = recorder_capture_rgb(r_buf, g_buf, b_buf, w, h, frame * 100.0)
+
+    frame = frame + 1.0
+  end
+
+  let _stop = recorder_stop()
+
+  print("  Exporting...")
+  let _gif = gif_export_recording("demo_output.gif")
+  let _html = html_export_recording("demo_output.html", "Bar Chart Animation")
+
+  print("  Done! Check demo_output.gif and demo_output.html")
+  return 0.0
+end
+
+main()

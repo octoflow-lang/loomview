@@ -1,0 +1,194 @@
+// recipe_heat.flow — 2D Heat Diffusion Visualization Recipe
+//
+// Simulates the heat equation on a 2D grid using 5-point stencil.
+// CPU stepping. Renders as heatmap with transport controls.
+//
+// Usage:
+//   use "recipes/recipe_heat"
+//   recipe_heat_run(60, 40)
+
+use "gui/gui_core"
+use "gui/canvas"
+use "src/data"
+use "src/config"
+use "src/render"
+use "src/app"
+use "src/palette"
+use "src/recorder"
+
+fn recipe_heat_init(w, h)
+  let mut gw = w
+  let mut gh = h
+  if gw < 3.0
+    gw = 3.0
+  end
+  if gh < 3.0
+    gh = 3.0
+  end
+
+  let n = gw * gh
+  let mut state = []
+  push(state, gw)
+  push(state, gh)
+  push(state, 0.25)
+
+  let mut i = 0.0
+  while i < n
+    push(state, 0.0)
+    i = i + 1.0
+  end
+
+  // Hot spot in center
+  let cx = floor(gw / 2.0)
+  let cy = floor(gh / 2.0)
+  let mut dy = -2.0
+  while dy <= 2.0
+    let mut dx = -2.0
+    while dx <= 2.0
+      let hx = cx + dx
+      let hy = cy + dy
+      if hx >= 0.0 && hx < gw && hy >= 0.0 && hy < gh
+        let idx = int(3.0 + hy * gw + hx)
+        state[idx] = 1.0
+      end
+      dx = dx + 1.0
+    end
+    dy = dy + 1.0
+  end
+
+  return state
+end
+
+fn recipe_heat_step(state, dt)
+  let n_state = len(state)
+  if n_state < 4.0
+    return state
+  end
+
+  let w = state[0]
+  let h = state[1]
+  let alpha = state[2]
+
+  if w < 3.0 || h < 3.0
+    return state
+  end
+
+  let n = w * h
+  if n_state < 3.0 + n
+    return state
+  end
+
+  let mut next = []
+  push(next, w)
+  push(next, h)
+  push(next, alpha)
+
+  let mut row = 0.0
+  while row < h
+    let mut col = 0.0
+    while col < w
+      let idx = int(3.0 + row * w + col)
+      let cur = state[idx]
+
+      if row == 0.0 || row == h - 1.0 || col == 0.0 || col == w - 1.0
+        push(next, cur)
+      else
+        let up = state[int(3.0 + (row - 1.0) * w + col)]
+        let down = state[int(3.0 + (row + 1.0) * w + col)]
+        let left = state[int(3.0 + row * w + (col - 1.0))]
+        let right = state[int(3.0 + row * w + (col + 1.0))]
+
+        let laplacian = up + down + left + right - 4.0 * cur
+        let new_val = cur + alpha * laplacian
+
+        if new_val < 0.0
+          push(next, 0.0)
+        elif new_val > 1.0
+          push(next, 1.0)
+        else
+          push(next, new_val)
+        end
+      end
+      col = col + 1.0
+    end
+    row = row + 1.0
+  end
+
+  return next
+end
+
+fn recipe_heat_get_grid(state)
+  let n_state = len(state)
+  if n_state < 4.0
+    return []
+  end
+
+  let mut grid = []
+  let mut i = 3.0
+  while i < n_state
+    push(grid, state[int(i)])
+    i = i + 1.0
+  end
+  return grid
+end
+
+fn recipe_heat_run(w, h)
+  let mut rw = w
+  let mut rh = h
+  if rw < 3.0
+    rw = 3.0
+  end
+  if rh < 3.0
+    rh = 3.0
+  end
+
+  print("LoomView Recipe: Heat Diffusion ({rw}x{rh})")
+
+  let mut state = recipe_heat_init(rw, rh)
+  let grid = recipe_heat_get_grid(state)
+
+  let mut config = viz_auto_config(grid, VIZ_HEATMAP)
+  config[4] = PAL_INFERNO
+  config[5] = rw
+  config[6] = rh
+
+  let _cvs = app_open("LoomView - Heat Diffusion", 1000.0, 700.0)
+  app_add_transport()
+  app_add_record_button()
+
+  let _alpha_s = app_add_slider("Diffusion", 0.01, 0.25, 0.25)
+
+  let _r = app_update(grid, VIZ_HEATMAP, config)
+
+  let mut step_count = 0.0
+  while app_running() == 1.0
+    gui_update()
+
+    let playing = app_is_playing()
+    let speed = app_speed()
+
+    if playing == 1.0
+      let alpha_val = app_get_slider(0.0)
+      if alpha_val > 0.0
+        state[2] = alpha_val
+      end
+
+      let mut steps = floor(speed)
+      if steps < 1.0
+        steps = 1.0
+      end
+      let mut s = 0.0
+      while s < steps
+        state = recipe_heat_step(state, 0.016)
+        s = s + 1.0
+      end
+      step_count = step_count + steps
+
+      let new_grid = recipe_heat_get_grid(state)
+      let _r2 = app_update(new_grid, VIZ_HEATMAP, config)
+    end
+  end
+
+  print("Heat simulation ended after {step_count} steps")
+  return state
+end

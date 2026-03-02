@@ -1,0 +1,165 @@
+// html_export.flow — Export recorded frames as self-contained HTML
+//
+// Generates a single .html file that plays back the recorded visualization
+// in any browser. No OctoFlow or server needed.
+//
+// The HTML file contains:
+//   - Embedded frame data as base64 or JSON
+//   - Inline JavaScript Canvas2D renderer
+//   - Playback controls (play/pause, scrub, speed)
+//
+// Usage:
+//   use "src/export/html_export"
+//   html_export_recording("output.html", "Heat Diffusion")
+
+use "../recorder"
+
+fn _hex_digit(n)
+  let d = int(n) % 16
+  if d == 0.0
+    return "0"
+  elif d == 1.0
+    return "1"
+  elif d == 2.0
+    return "2"
+  elif d == 3.0
+    return "3"
+  elif d == 4.0
+    return "4"
+  elif d == 5.0
+    return "5"
+  elif d == 6.0
+    return "6"
+  elif d == 7.0
+    return "7"
+  elif d == 8.0
+    return "8"
+  elif d == 9.0
+    return "9"
+  elif d == 10.0
+    return "a"
+  elif d == 11.0
+    return "b"
+  elif d == 12.0
+    return "c"
+  elif d == 13.0
+    return "d"
+  elif d == 14.0
+    return "e"
+  end
+  return "f"
+end
+
+fn _byte_to_hex(val)
+  let mut v = floor(val)
+  if v < 0.0
+    v = 0.0
+  end
+  if v > 255.0
+    v = 255.0
+  end
+  let hi = _hex_digit(floor(v / 16.0))
+  let lo = _hex_digit(v)
+  return hi + lo
+end
+
+fn html_export_recording(filename, title)
+  let n_frames = recorder_frame_count()
+  if n_frames == 0.0
+    print("html_export: no frames to export")
+    return 0.0
+  end
+
+  let dims = recorder_get_dimensions()
+  let width = dims[0]
+  let height = dims[1]
+  let fps = recorder_get_fps()
+  let n_pixels = width * height
+
+  print("html_export: encoding {n_frames} frames ({width}x{height}) to {filename}")
+
+  // Build frame data as hex string for compact embedding
+  // Each pixel: 2 hex chars per channel = 6 chars per pixel
+  let mut frame_data_parts = []
+  let mut f = 0.0
+  while f < n_frames
+    let frame = recorder_get_frame(f)
+    let mut hex_str = ""
+    let mut p = 0.0
+    while p < n_pixels * 3.0
+      let mut v = 0.0
+      if int(p) < len(frame)
+        v = frame[int(p)]
+      end
+      hex_str = hex_str + _byte_to_hex(v)
+      p = p + 1.0
+    end
+    push(frame_data_parts, hex_str)
+    f = f + 1.0
+  end
+
+  // Build the HTML document
+  let mut html = "<!DOCTYPE html>\n"
+  html = html + "<html><head><meta charset='utf-8'>\n"
+  html = html + "<title>" + title + " — LoomView Recording</title>\n"
+  html = html + "<style>\n"
+  html = html + "body{margin:0;background:#1a1a2e;color:#eee;font-family:monospace;display:flex;flex-direction:column;align-items:center;padding:20px}\n"
+  html = html + "h1{color:#00d4aa;margin:10px 0}\n"
+  html = html + "canvas{border:1px solid #333;margin:10px 0}\n"
+  html = html + ".controls{display:flex;gap:10px;align-items:center;margin:10px 0}\n"
+  html = html + "button{background:#00d4aa;color:#1a1a2e;border:none;padding:8px 16px;cursor:pointer;font-family:monospace;font-weight:bold}\n"
+  html = html + "button:hover{background:#00ffcc}\n"
+  html = html + "input[type=range]{width:300px}\n"
+  html = html + ".info{color:#888;font-size:12px}\n"
+  html = html + "</style></head><body>\n"
+  html = html + "<h1>" + title + "</h1>\n"
+  html = html + "<canvas id='c' width='" + str(floor(width)) + "' height='" + str(floor(height)) + "'></canvas>\n"
+  html = html + "<div class='controls'>\n"
+  html = html + "<button id='play'>Play</button>\n"
+  html = html + "<span id='frame'>0 / " + str(floor(n_frames)) + "</span>\n"
+  html = html + "<input type='range' id='scrub' min='0' max='" + str(floor(n_frames - 1.0)) + "' value='0'>\n"
+  html = html + "<label>Speed: <select id='speed'><option>0.5x</option><option selected>1x</option><option>2x</option><option>4x</option></select></label>\n"
+  html = html + "</div>\n"
+  html = html + "<div class='info'>Recorded with LoomView | " + str(floor(n_frames)) + " frames @ " + str(floor(fps)) + " FPS | " + str(floor(width)) + "x" + str(floor(height)) + "</div>\n"
+
+  // Embed frame data as JavaScript
+  html = html + "<script>\n"
+  html = html + "const W=" + str(floor(width)) + ",H=" + str(floor(height)) + ",FPS=" + str(floor(fps)) + ",N=" + str(floor(n_frames)) + ";\n"
+  html = html + "const frames=[\n"
+
+  f = 0.0
+  while f < n_frames
+    html = html + "'" + frame_data_parts[int(f)] + "'"
+    if f < n_frames - 1.0
+      html = html + ",\n"
+    end
+    f = f + 1.0
+  end
+
+  html = html + "\n];\n"
+
+  // JavaScript player
+  html = html + "const cv=document.getElementById('c'),ctx=cv.getContext('2d');\n"
+  html = html + "const img=ctx.createImageData(W,H);\n"
+  html = html + "let cur=0,playing=false,speed=1;\n"
+  html = html + "function hexToByte(h,i){const c=h.charCodeAt(i);return(c<58?c-48:c-87)*16+(h2=h.charCodeAt(i+1),h2<58?h2-48:h2-87)}\n"
+  html = html + "function showFrame(f){\n"
+  html = html + "  const d=frames[f],px=img.data;\n"
+  html = html + "  for(let i=0;i<W*H;i++){px[i*4]=hexToByte(d,i*6);px[i*4+1]=hexToByte(d,i*6+2);px[i*4+2]=hexToByte(d,i*6+4);px[i*4+3]=255}\n"
+  html = html + "  ctx.putImageData(img,0,0);\n"
+  html = html + "  document.getElementById('frame').textContent=f+' / '+N;\n"
+  html = html + "  document.getElementById('scrub').value=f;\n"
+  html = html + "}\n"
+  html = html + "function tick(){if(!playing)return;cur=(cur+1)%N;showFrame(cur);setTimeout(tick,1000/(FPS*speed))}\n"
+  html = html + "document.getElementById('play').onclick=function(){playing=!playing;this.textContent=playing?'Pause':'Play';if(playing)tick()};\n"
+  html = html + "document.getElementById('scrub').oninput=function(){cur=+this.value;showFrame(cur)};\n"
+  html = html + "document.getElementById('speed').onchange=function(){speed=parseFloat(this.value)};\n"
+  html = html + "showFrame(0);\n"
+  html = html + "</script></body></html>"
+
+  // Write file
+  let _w = write_file(filename, html)
+  print("html_export: done ({filename})")
+
+  return 1.0
+end
