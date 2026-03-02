@@ -3,10 +3,9 @@
 // Generates a single .html file that plays back the recorded visualization
 // in any browser. No OctoFlow or server needed.
 //
-// The HTML file contains:
-//   - Embedded frame data as base64 or JSON
-//   - Inline JavaScript Canvas2D renderer
-//   - Playback controls (play/pause, scrub, speed)
+// Uses append_file for streaming writes — avoids O(n²) string concatenation.
+// Hex encoding is inlined (no sub-function) because OctoFlow user-defined
+// functions can only take number/array params, not strings.
 //
 // Usage:
 //   use "src/export/html_export"
@@ -14,6 +13,7 @@
 
 use "../recorder"
 
+// Hex lookup: convert 0-15 to hex char
 fn _hex_digit(n)
   let d = int(n) % 16
   if d == 0.0
@@ -71,95 +71,103 @@ fn html_export_recording(filename, title)
   end
 
   let dims = recorder_get_dimensions()
-  let width = dims[0]
-  let height = dims[1]
+  let w = dims[0]
+  let h = dims[1]
   let fps = recorder_get_fps()
-  let n_pixels = width * height
+  let n_pixels = w * h
+  let n_values = n_pixels * 3.0
 
-  print("html_export: encoding {n_frames} frames ({width}x{height}) to {filename}")
+  let fw = str(floor(w))
+  let fh = str(floor(h))
+  let ff = str(floor(fps))
+  let fn_str = str(floor(n_frames))
+  let fmax = str(floor(n_frames - 1.0))
 
-  // Build frame data as hex string for compact embedding
-  // Each pixel: 2 hex chars per channel = 6 chars per pixel
-  let mut frame_data_parts = []
+  print("html_export: encoding {fn_str} frames ({fw}x{fh}) to {filename}")
+
+  // Write HTML header (small string, single write_file to create/truncate)
+  let mut hdr = "<!DOCTYPE html>\n<html><head><meta charset='utf-8'>\n"
+  hdr = hdr + "<title>" + title + " — LoomView Recording</title>\n"
+  hdr = hdr + "<style>\n"
+  hdr = hdr + "body{margin:0;background:#1a1a2e;color:#eee;font-family:monospace;display:flex;flex-direction:column;align-items:center;padding:20px}\n"
+  hdr = hdr + "h1{color:#00d4aa;margin:10px 0}\n"
+  hdr = hdr + "canvas{border:1px solid #333;image-rendering:pixelated;margin:10px 0}\n"
+  hdr = hdr + ".controls{display:flex;gap:10px;align-items:center;margin:10px 0}\n"
+  hdr = hdr + "button{background:#00d4aa;color:#1a1a2e;border:none;padding:8px 16px;cursor:pointer;font-family:monospace;font-weight:bold;border-radius:4px}\n"
+  hdr = hdr + "button:hover{background:#00ffcc}\n"
+  hdr = hdr + "input[type=range]{width:300px}\n"
+  hdr = hdr + ".info{color:#888;font-size:12px}\n"
+  hdr = hdr + "</style></head><body>\n"
+  hdr = hdr + "<h1>" + title + "</h1>\n"
+  hdr = hdr + "<canvas id='c' width='" + fw + "' height='" + fh + "' style='width:" + str(floor(w * 4.0)) + "px;height:" + str(floor(h * 4.0)) + "px'></canvas>\n"
+  hdr = hdr + "<div class='controls'>\n"
+  hdr = hdr + "<button id='play'>Play</button>\n"
+  hdr = hdr + "<span id='frame'>0 / " + fn_str + "</span>\n"
+  hdr = hdr + "<input type='range' id='scrub' min='0' max='" + fmax + "' value='0'>\n"
+  hdr = hdr + "<label>Speed: <select id='speed'><option>0.5x</option><option selected>1x</option><option>2x</option><option>4x</option></select></label>\n"
+  hdr = hdr + "</div>\n"
+  hdr = hdr + "<div class='info'>Recorded with LoomView | " + fn_str + " frames @ " + ff + " FPS | " + fw + "x" + fh + "</div>\n"
+  hdr = hdr + "<script>\n"
+  hdr = hdr + "const W=" + fw + ",H=" + fh + ",FPS=" + ff + ",N=" + fn_str + ";\n"
+  hdr = hdr + "const frames=[\n"
+  let _w = write_file(filename, hdr)
+
+  // Stream frame data to file — chunked hex encoding inlined here
+  // (can't pass filename to a sub-function; OctoFlow user fns only take numbers/arrays)
+  let CHUNK_SIZE = 128.0
   let mut f = 0.0
   while f < n_frames
+    let _q = append_file(filename, "'")
     let frame = recorder_get_frame(f)
-    let mut hex_str = ""
+
+    // Chunked hex encoding: build small strings and append each
     let mut p = 0.0
-    while p < n_pixels * 3.0
-      let mut v = 0.0
-      if int(p) < len(frame)
-        v = frame[int(p)]
+    while p < n_values
+      let mut chunk = ""
+      let chunk_end = p + CHUNK_SIZE
+      while p < n_values && p < chunk_end
+        let mut v = 0.0
+        if int(p) < len(frame)
+          v = frame[int(p)]
+        end
+        chunk = chunk + _byte_to_hex(v)
+        p = p + 1.0
       end
-      hex_str = hex_str + _byte_to_hex(v)
-      p = p + 1.0
+      let _a = append_file(filename, chunk)
     end
-    push(frame_data_parts, hex_str)
-    f = f + 1.0
-  end
 
-  // Build the HTML document
-  let mut html = "<!DOCTYPE html>\n"
-  html = html + "<html><head><meta charset='utf-8'>\n"
-  html = html + "<title>" + title + " — LoomView Recording</title>\n"
-  html = html + "<style>\n"
-  html = html + "body{margin:0;background:#1a1a2e;color:#eee;font-family:monospace;display:flex;flex-direction:column;align-items:center;padding:20px}\n"
-  html = html + "h1{color:#00d4aa;margin:10px 0}\n"
-  html = html + "canvas{border:1px solid #333;margin:10px 0}\n"
-  html = html + ".controls{display:flex;gap:10px;align-items:center;margin:10px 0}\n"
-  html = html + "button{background:#00d4aa;color:#1a1a2e;border:none;padding:8px 16px;cursor:pointer;font-family:monospace;font-weight:bold}\n"
-  html = html + "button:hover{background:#00ffcc}\n"
-  html = html + "input[type=range]{width:300px}\n"
-  html = html + ".info{color:#888;font-size:12px}\n"
-  html = html + "</style></head><body>\n"
-  html = html + "<h1>" + title + "</h1>\n"
-  html = html + "<canvas id='c' width='" + str(floor(width)) + "' height='" + str(floor(height)) + "'></canvas>\n"
-  html = html + "<div class='controls'>\n"
-  html = html + "<button id='play'>Play</button>\n"
-  html = html + "<span id='frame'>0 / " + str(floor(n_frames)) + "</span>\n"
-  html = html + "<input type='range' id='scrub' min='0' max='" + str(floor(n_frames - 1.0)) + "' value='0'>\n"
-  html = html + "<label>Speed: <select id='speed'><option>0.5x</option><option selected>1x</option><option>2x</option><option>4x</option></select></label>\n"
-  html = html + "</div>\n"
-  html = html + "<div class='info'>Recorded with LoomView | " + str(floor(n_frames)) + " frames @ " + str(floor(fps)) + " FPS | " + str(floor(width)) + "x" + str(floor(height)) + "</div>\n"
-
-  // Embed frame data as JavaScript
-  html = html + "<script>\n"
-  html = html + "const W=" + str(floor(width)) + ",H=" + str(floor(height)) + ",FPS=" + str(floor(fps)) + ",N=" + str(floor(n_frames)) + ";\n"
-  html = html + "const frames=[\n"
-
-  f = 0.0
-  while f < n_frames
-    html = html + "'" + frame_data_parts[int(f)] + "'"
     if f < n_frames - 1.0
-      html = html + ",\n"
+      let _c = append_file(filename, "',\n")
+    else
+      let _c = append_file(filename, "'\n")
     end
+
+    let fc = str(floor(f + 1.0))
+    print("  html: frame {fc}/{fn_str} encoded")
     f = f + 1.0
   end
 
-  html = html + "\n];\n"
+  // Write JavaScript player (small string, single append)
+  let mut js = "];\n"
+  js = js + "const cv=document.getElementById('c'),ctx=cv.getContext('2d');\n"
+  js = js + "const img=ctx.createImageData(W,H);\n"
+  js = js + "let cur=0,playing=false,speed=1;\n"
+  js = js + "function hexToByte(h,i){const c=h.charCodeAt(i);return(c<58?c-48:c-87)*16+(h2=h.charCodeAt(i+1),h2<58?h2-48:h2-87)}\n"
+  js = js + "function showFrame(f){\n"
+  js = js + "  const d=frames[f],px=img.data;\n"
+  js = js + "  for(let i=0;i<W*H;i++){px[i*4]=hexToByte(d,i*6);px[i*4+1]=hexToByte(d,i*6+2);px[i*4+2]=hexToByte(d,i*6+4);px[i*4+3]=255}\n"
+  js = js + "  ctx.putImageData(img,0,0);\n"
+  js = js + "  document.getElementById('frame').textContent=f+' / '+N;\n"
+  js = js + "  document.getElementById('scrub').value=f;\n"
+  js = js + "}\n"
+  js = js + "function tick(){if(!playing)return;cur=(cur+1)%N;showFrame(cur);setTimeout(tick,1000/(FPS*speed))}\n"
+  js = js + "document.getElementById('play').onclick=function(){playing=!playing;this.textContent=playing?'Pause':'Play';if(playing)tick()};\n"
+  js = js + "document.getElementById('scrub').oninput=function(){cur=+this.value;showFrame(cur)};\n"
+  js = js + "document.getElementById('speed').onchange=function(){speed=parseFloat(this.value)};\n"
+  js = js + "showFrame(0);\n"
+  js = js + "</script></body></html>"
+  let _j = append_file(filename, js)
 
-  // JavaScript player
-  html = html + "const cv=document.getElementById('c'),ctx=cv.getContext('2d');\n"
-  html = html + "const img=ctx.createImageData(W,H);\n"
-  html = html + "let cur=0,playing=false,speed=1;\n"
-  html = html + "function hexToByte(h,i){const c=h.charCodeAt(i);return(c<58?c-48:c-87)*16+(h2=h.charCodeAt(i+1),h2<58?h2-48:h2-87)}\n"
-  html = html + "function showFrame(f){\n"
-  html = html + "  const d=frames[f],px=img.data;\n"
-  html = html + "  for(let i=0;i<W*H;i++){px[i*4]=hexToByte(d,i*6);px[i*4+1]=hexToByte(d,i*6+2);px[i*4+2]=hexToByte(d,i*6+4);px[i*4+3]=255}\n"
-  html = html + "  ctx.putImageData(img,0,0);\n"
-  html = html + "  document.getElementById('frame').textContent=f+' / '+N;\n"
-  html = html + "  document.getElementById('scrub').value=f;\n"
-  html = html + "}\n"
-  html = html + "function tick(){if(!playing)return;cur=(cur+1)%N;showFrame(cur);setTimeout(tick,1000/(FPS*speed))}\n"
-  html = html + "document.getElementById('play').onclick=function(){playing=!playing;this.textContent=playing?'Pause':'Play';if(playing)tick()};\n"
-  html = html + "document.getElementById('scrub').oninput=function(){cur=+this.value;showFrame(cur)};\n"
-  html = html + "document.getElementById('speed').onchange=function(){speed=parseFloat(this.value)};\n"
-  html = html + "showFrame(0);\n"
-  html = html + "</script></body></html>"
-
-  // Write file
-  let _w = write_file(filename, html)
   print("html_export: done ({filename})")
-
   return 1.0
 end

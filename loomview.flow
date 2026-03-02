@@ -13,9 +13,6 @@
 //   viz_heat(data, 40, 30)
 //   viz_scatter(xy_data)
 //
-// Simulation Mode:
-//   viz_sim("Heat", 900, 600, init_data, step_fn, VIZ_HEATMAP)
-//
 // Recipe Mode:
 //   viz_recipe("heat")
 
@@ -202,49 +199,9 @@ end
 
 // === Simulation Mode ===
 
-fn viz_sim(title, w, h, init_data, step_fn, viz_type)
-  let n = len(init_data)
-  if n == 0.0
-    print("viz_sim: empty initial data")
-    return 0.0
-  end
-  let mut sim_title = title
-  if len(title) == 0.0
-    sim_title = "LoomView Simulation"
-  end
-  let mut sim_w = w
-  if w <= 0.0
-    sim_w = 1000.0
-  end
-  let mut sim_h = h
-  if h <= 0.0
-    sim_h = 700.0
-  end
-
-  let config = viz_auto_config(init_data, viz_type)
-  let _cvs = app_open(sim_title, sim_w, sim_h)
-  app_add_transport()
-  app_add_record_button()
-
-  let _r = app_update(init_data, viz_type, config)
-
-  let mut state = init_data
-  while app_running() == 1.0
-    gui_update()
-
-    let playing = app_is_playing()
-    let speed = app_speed()
-
-    if playing == 1.0
-      let dt = speed * 0.016
-      state = step_fn(state, dt)
-      app_set_step(app_step() + 1.0)
-      let _r2 = app_update(state, viz_type, config)
-    end
-  end
-
-  return state
-end
+// Note: viz_sim with callback not supported — use recipes directly.
+// Each recipe (recipe_heat, recipe_wave, etc.) has its own run() function
+// with integrated stepping, transport controls, and recording.
 
 // === Recipe Mode ===
 
@@ -312,7 +269,8 @@ fn viz_describe(data)
   print("  Bounded01:  {fp[14]}")
   print("  UniqueRatio:{fp[15]}")
   print("")
-  print("  Best viz: {viz_type_name(best)}")
+  let best_name = viz_type_name(best)
+  print("  Best viz: {best_name}")
   print("  Scores: line={scores[0]} scatter={scores[1]} bar={scores[2]} heat={scores[3]}")
   print("          hist={scores[4]} pie={scores[5]} spark={scores[6]}")
 

@@ -6,11 +6,11 @@
 // Usage:
 //   octoflow run examples/live_stream.flow
 
-use "src/data"
-use "src/config"
-use "src/render"
-use "src/app"
-use "src/stream"
+use "../src/data"
+use "../src/config"
+use "../src/render"
+use "../src/app"
+use "../src/stream"
 
 fn main()
   print("LoomView Live Stream Example")

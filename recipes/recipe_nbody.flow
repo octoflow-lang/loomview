@@ -10,11 +10,11 @@
 
 use "gui/gui_core"
 use "gui/canvas"
-use "src/data"
-use "src/config"
-use "src/render"
-use "src/app"
-use "src/palette"
+use "../src/data"
+use "../src/config"
+use "../src/render"
+use "../src/app"
+use "../src/palette"
 
 let NBODY_FIELDS = 5.0
 

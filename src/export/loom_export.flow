@@ -1,0 +1,203 @@
+// loom_export.flow — Loom-Engine Native Recording Export
+//
+// Exports recorded frames using binary I/O (write_bytes) instead of
+// text encoding. This is the Loom way: frames are flat byte arrays,
+// just write them. No hex, no base64, no O(n²) string concatenation.
+//
+// Architecture (Loom Recipe):
+//   Support Loom (CPU, multi-threaded):
+//     - Marshals frame data from recorder arrays
+//     - write_bytes for binary export (thread pool I/O)
+//     - append_file for HTML viewer chunks
+//   Main Loom (GPU, future):
+//     - Downscale/resize frames
+//     - Palette quantization
+//     - Color space conversion
+//
+// Output files (hardcoded names — OctoFlow user fns can't take string params):
+//   lv_recording.bin  — raw LVRC binary format
+//   lv_recording.html — self-contained HTML viewer (inline Uint8Array)
+//
+// Usage:
+//   use "src/export/loom_export"
+//   // After recording frames with recorder...
+//   loom_export_bin()                               // binary dump
+//   loom_export_html(width, height, fps, n_frames)  // HTML viewer
+
+use "../recorder"
+
+// u16 little-endian push
+fn _lx_u16le(buf, val)
+  let v = floor(val)
+  push(buf, v - floor(v / 256.0) * 256.0)
+  push(buf, floor(v / 256.0))
+  return 0.0
+end
+
+// === Binary Export ===
+// Writes all frames as LVRC binary file via write_bytes.
+// Format:
+//   [0-3]   "LVRC" magic (76,86,82,67)
+//   [4-5]   width (u16le)
+//   [6-7]   height (u16le)
+//   [8]     fps (u8)
+//   [9-10]  frame_count (u16le)
+//   [11-12] reserved
+//   [13+]   frame data: width*height*3 bytes per frame, interleaved RGB
+//
+// Each byte is a float 0-255; write_bytes does f→u8 truncation.
+fn loom_export_bin()
+  let n_frames = recorder_frame_count()
+  if n_frames == 0.0
+    print("loom_export: no frames to export")
+    return 0.0
+  end
+
+  let dims = recorder_get_dimensions()
+  let w = dims[0]
+  let h = dims[1]
+  let fps = recorder_get_fps()
+
+  let fw = str(floor(w))
+  let fh = str(floor(h))
+  let fn_str = str(floor(n_frames))
+  print("loom_export: writing {fn_str} frames ({fw}x{fh}) to lv_recording.bin")
+
+  let mut bytes = []
+
+  // Header: LVRC magic
+  push(bytes, 76.0)
+  push(bytes, 86.0)
+  push(bytes, 82.0)
+  push(bytes, 67.0)
+  let _u1 = _lx_u16le(bytes, w)
+  let _u2 = _lx_u16le(bytes, h)
+  push(bytes, floor(fps))
+  let _u3 = _lx_u16le(bytes, n_frames)
+  push(bytes, 0.0)
+  push(bytes, 0.0)
+
+  // Frame data — direct from recorder, clamp to 0-255
+  let mut f = 0.0
+  while f < n_frames
+    let frame = recorder_get_frame(f)
+    let fl = len(frame)
+    let mut i = 0.0
+    while i < fl
+      let mut v = floor(frame[int(i)])
+      if v < 0.0
+        v = 0.0
+      end
+      if v > 255.0
+        v = 255.0
+      end
+      push(bytes, v)
+      i = i + 1.0
+    end
+    let fc = str(floor(f + 1.0))
+    print("  bin: frame {fc}/{fn_str}")
+    f = f + 1.0
+  end
+
+  write_bytes("lv_recording.bin", bytes)
+  let total = str(len(bytes))
+  print("loom_export: lv_recording.bin written ({total} bytes)")
+  return 1.0
+end
+
+// === HTML Viewer Export ===
+// Writes a self-contained HTML file with inline frame data as
+// JavaScript Uint8Array literal. No fetch, no CORS — opens anywhere.
+//
+// Data is written in chunks via append_file to avoid O(n²) string concat.
+// Each chunk: ~128 pixel values as "N,N,N,..." (~512 chars).
+fn loom_export_html(width, height, fps, n_frames)
+  if n_frames == 0.0
+    print("loom_export: no frames for HTML export")
+    return 0.0
+  end
+
+  let fw = str(floor(width))
+  let fh = str(floor(height))
+  let ff = str(floor(fps))
+  let fn_str = str(floor(n_frames))
+  let dw = str(floor(width * 4.0))
+  let dh = str(floor(height * 4.0))
+  let sm = str(floor(n_frames - 1.0))
+  let n_pixels = width * height
+
+  print("loom_export: writing {fn_str} frames ({fw}x{fh}) to lv_recording.html")
+
+  // HTML header + open Uint8Array
+  let mut hdr = "<!DOCTYPE html>\n<html><head><meta charset='utf-8'>\n"
+  hdr = hdr + "<title>LoomView Recording</title>\n"
+  hdr = hdr + "<style>\n"
+  hdr = hdr + "body{margin:0;background:#1a1a2e;color:#eee;font-family:monospace;display:flex;flex-direction:column;align-items:center;padding:20px}\n"
+  hdr = hdr + "h1{color:#00d4aa;margin:10px 0}\n"
+  hdr = hdr + "canvas{border:1px solid #333;image-rendering:pixelated;margin:10px 0}\n"
+  hdr = hdr + ".controls{display:flex;gap:10px;align-items:center;margin:10px 0}\n"
+  hdr = hdr + "button{background:#00d4aa;color:#1a1a2e;border:none;padding:8px 16px;cursor:pointer;font-family:monospace;font-weight:bold;border-radius:4px}\n"
+  hdr = hdr + "button:hover{background:#00ffcc}\n"
+  hdr = hdr + "input[type=range]{width:300px}\n"
+  hdr = hdr + ".info{color:#888;font-size:12px}\n"
+  hdr = hdr + "</style></head><body>\n"
+  hdr = hdr + "<h1>LoomView Recording</h1>\n"
+  hdr = hdr + "<canvas id='c' width='" + fw + "' height='" + fh + "' style='width:" + dw + "px;height:" + dh + "px'></canvas>\n"
+  hdr = hdr + "<div class='controls'>\n"
+  hdr = hdr + "<button id='play'>Play</button>\n"
+  hdr = hdr + "<span id='frame'>0 / " + fn_str + "</span>\n"
+  hdr = hdr + "<input type='range' id='scrub' min='0' max='" + sm + "' value='0'>\n"
+  hdr = hdr + "</div>\n"
+  hdr = hdr + "<div class='info'>Recorded with LoomView | " + fn_str + " frames @ " + ff + " FPS | " + fw + "x" + fh + "</div>\n"
+  hdr = hdr + "<script>\n"
+  hdr = hdr + "const W=" + fw + ",H=" + fh + ",FPS=" + ff + ",N=" + fn_str + ";\n"
+  hdr = hdr + "const data=new Uint8Array([\n"
+  write_file("lv_recording.html", hdr)
+
+  // Stream frame data as comma-separated numbers
+  // Chunk size: 128 values per append (small string, fast concat)
+  let CHUNK = 128.0
+  let n_values = n_pixels * 3.0
+  let mut f = 0.0
+  while f < n_frames
+    let frame = recorder_get_frame(f)
+    let fl = len(frame)
+    let mut p = 0.0
+    while p < fl
+      let mut chunk = ""
+      let mut c = 0.0
+      while c < CHUNK && p < fl
+        let mut v = floor(frame[int(p)])
+        if v < 0.0
+          v = 0.0
+        end
+        if v > 255.0
+          v = 255.0
+        end
+        let sv = str(v)
+        chunk = chunk + sv + ","
+        p = p + 1.0
+        c = c + 1.0
+      end
+      append_file("lv_recording.html", chunk)
+    end
+    let fc = str(floor(f + 1.0))
+    print("  html: frame {fc}/{fn_str}")
+    f = f + 1.0
+  end
+
+  // JavaScript player + close HTML
+  let mut js = "\n]);\n"
+  js = js + "const cv=document.getElementById('c'),ctx=cv.getContext('2d'),img=ctx.createImageData(W,H);\n"
+  js = js + "let cur=0,playing=false,spd=1;\n"
+  js = js + "function show(f){const o=f*W*H*3,px=img.data;for(let i=0;i<W*H;i++){px[i*4]=data[o+i*3];px[i*4+1]=data[o+i*3+1];px[i*4+2]=data[o+i*3+2];px[i*4+3]=255}ctx.putImageData(img,0,0);document.getElementById('frame').textContent=f+' / '+N;document.getElementById('scrub').value=f}\n"
+  js = js + "function tick(){if(!playing)return;cur=(cur+1)%N;show(cur);setTimeout(tick,1000/(FPS*spd))}\n"
+  js = js + "document.getElementById('play').onclick=function(){playing=!playing;this.textContent=playing?'Pause':'Play';if(playing)tick()};\n"
+  js = js + "document.getElementById('scrub').oninput=function(){cur=+this.value;show(cur)};\n"
+  js = js + "show(0);\n"
+  js = js + "</script></body></html>"
+  append_file("lv_recording.html", js)
+
+  print("loom_export: lv_recording.html written (self-contained)")
+  return 1.0
+end

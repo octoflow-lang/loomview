@@ -20,33 +20,35 @@ use "data"
 use "render"
 
 // === Window State ===
-let mut _app_inited = 0.0
-let mut _app_canvas = -1.0
-let mut _app_playing = 0.0
-let mut _app_speed = 1.0
-let mut _app_step = 0.0
-let mut _app_win_w = 1000.0
-let mut _app_win_h = 700.0
-let mut _app_panel_w = 200.0
-let mut _app_canvas_w = 800.0
-let mut _app_canvas_h = 670.0
-let mut _app_status_h = 30.0
+// All module-level scalars use single-element array pattern [SCALAR]
+// because scalar writeback doesn't propagate across imported module boundaries.
+let mut _app_inited = [0.0]
+let mut _app_canvas = [-1.0]
+let mut _app_playing = [0.0]
+let mut _app_speed = [1.0]
+let mut _app_step = [0.0]
+let mut _app_win_w = [1000.0]
+let mut _app_win_h = [700.0]
+let mut _app_panel_w = [200.0]
+let mut _app_canvas_w = [800.0]
+let mut _app_canvas_h = [670.0]
+let mut _app_status_h = [30.0]
 
 // Transport widget IDs
-let mut _app_btn_play = -1.0
-let mut _app_btn_step = -1.0
-let mut _app_btn_reset = -1.0
-let mut _app_slider_speed = -1.0
-let mut _app_label_step = -1.0
-let mut _app_label_title = -1.0
-let mut _app_label_status = -1.0
+let mut _app_btn_play = [-1.0]
+let mut _app_btn_step = [-1.0]
+let mut _app_btn_reset = [-1.0]
+let mut _app_slider_speed = [-1.0]
+let mut _app_label_step = [-1.0]
+let mut _app_label_title = [-1.0]
+let mut _app_label_status = [-1.0]
 
 // Recording state
-let mut _app_recording = 0.0
-let mut _app_btn_record = -1.0
+let mut _app_recording = [0.0]
+let mut _app_btn_record = [-1.0]
 
 // Control panel layout
-let mut _app_ctrl_layout = -1.0
+let mut _app_ctrl_layout = [-1.0]
 
 // User sliders
 let mut _app_sliders = []
@@ -61,63 +63,64 @@ fn app_open(title, width, height)
     h = 400.0
   end
 
-  _app_win_w = w
-  _app_win_h = h
-  _app_panel_w = 200.0
-  _app_canvas_w = w - _app_panel_w
-  _app_canvas_h = h - _app_status_h
+  _app_win_w[0] = w
+  _app_win_h[0] = h
+  _app_panel_w[0] = 200.0
+  _app_canvas_w[0] = w - _app_panel_w[0]
+  _app_canvas_h[0] = h - _app_status_h[0]
 
   let _ok = gui_init(w, h, title)
-  _app_inited = 1.0
+  _app_inited[0] = 1.0
 
   // Left panel background
-  let _p = gui_panel(0.0, 0.0, _app_panel_w, h - _app_status_h)
+  let _p = gui_panel(0.0, 0.0, _app_panel_w[0], h - _app_status_h[0])
 
   // Title
-  _app_label_title = gui_label(10.0, 10.0, title)
+  _app_label_title[0] = gui_label(10.0, 10.0, title)
 
   // Separator
-  let _sep = gui_separator(10.0, 35.0, _app_panel_w - 20.0)
+  let _sep = gui_separator(10.0, 35.0, _app_panel_w[0] - 20.0)
 
   // Control layout
-  _app_ctrl_layout = vstack(10.0, 50.0, 8.0)
+  _app_ctrl_layout[0] = vstack(10.0, 50.0, 8.0)
 
   // Main canvas
-  _app_canvas = gui_canvas(_app_panel_w, 0.0, _app_canvas_w, _app_canvas_h)
+  _app_canvas[0] = gui_canvas(_app_panel_w[0], 0.0, _app_canvas_w[0], _app_canvas_h[0])
 
   // Status bar (bottom strip)
-  let _sb = gui_panel(0.0, h - _app_status_h, w, _app_status_h)
-  _app_label_status = gui_label(10.0, h - _app_status_h + 6.0, "Ready")
+  let _sb = gui_panel(0.0, h - _app_status_h[0], w, _app_status_h[0])
+  _app_label_status[0] = gui_label(10.0, h - _app_status_h[0] + 6.0, "Ready")
 
-  _app_sliders = []
-  _app_recording = 0.0
+  // Note: cannot reassign arrays to [] inside functions.
+  // Sliders are only added after app_open, so module-level init suffices.
+  _app_recording[0] = 0.0
 
-  return _app_canvas
+  return _app_canvas[0]
 end
 
 fn app_add_transport()
-  let _sep = gui_separator(10.0, 0.0, _app_panel_w - 20.0)
-  let _lbl = vstack_label(_app_ctrl_layout, "Transport")
+  let _sep = gui_separator(10.0, 0.0, _app_panel_w[0] - 20.0)
+  let _lbl = vstack_label(_app_ctrl_layout[0], "Transport")
 
-  _app_btn_play = vstack_button(_app_ctrl_layout, 55.0, 28.0, "Play")
-  _app_btn_step = vstack_button(_app_ctrl_layout, 55.0, 28.0, "Step")
-  _app_btn_reset = vstack_button(_app_ctrl_layout, 55.0, 28.0, "Reset")
+  _app_btn_play[0] = vstack_button(_app_ctrl_layout[0], 55.0, 28.0, "Play")
+  _app_btn_step[0] = vstack_button(_app_ctrl_layout[0], 55.0, 28.0, "Step")
+  _app_btn_reset[0] = vstack_button(_app_ctrl_layout[0], 55.0, 28.0, "Reset")
 
-  let _slbl = vstack_label(_app_ctrl_layout, "Speed")
-  _app_slider_speed = vstack_slider(_app_ctrl_layout, _app_panel_w - 30.0, 0.1, 10.0, 1.0)
+  let _slbl = vstack_label(_app_ctrl_layout[0], "Speed")
+  _app_slider_speed[0] = vstack_slider(_app_ctrl_layout[0], _app_panel_w[0] - 30.0, 0.1, 10.0, 1.0)
 
-  _app_label_step = vstack_label(_app_ctrl_layout, "Step: 0")
+  _app_label_step[0] = vstack_label(_app_ctrl_layout[0], "Step: 0")
 
-  _app_playing = 0.0
-  _app_step = 0.0
+  _app_playing[0] = 0.0
+  _app_step[0] = 0.0
 
   return 1.0
 end
 
 fn app_add_record_button()
-  let _sep = gui_separator(10.0, 0.0, _app_panel_w - 20.0)
-  let _lbl = vstack_label(_app_ctrl_layout, "Recording")
-  _app_btn_record = vstack_button(_app_ctrl_layout, 80.0, 28.0, "Record")
+  let _sep = gui_separator(10.0, 0.0, _app_panel_w[0] - 20.0)
+  let _lbl = vstack_label(_app_ctrl_layout[0], "Recording")
+  _app_btn_record[0] = vstack_button(_app_ctrl_layout[0], 80.0, 28.0, "Record")
   return 1.0
 end
 
@@ -135,8 +138,8 @@ fn app_add_slider(label, min_v, max_v, default_v)
     s_def = s_max
   end
 
-  let _lbl = vstack_label(_app_ctrl_layout, label)
-  let sid = vstack_slider(_app_ctrl_layout, _app_panel_w - 30.0, s_min, s_max, s_def)
+  let _lbl = vstack_label(_app_ctrl_layout[0], label)
+  let sid = vstack_slider(_app_ctrl_layout[0], _app_panel_w[0] - 30.0, s_min, s_max, s_def)
   push(_app_sliders, sid)
   return sid
 end
@@ -150,74 +153,74 @@ fn app_get_slider(idx)
 end
 
 fn app_update(data, viz_type, config)
-  if _app_inited == 0.0
+  if _app_inited[0] == 0.0
     return 0.0
   end
-  if _app_canvas < 0.0
+  if _app_canvas[0] < 0.0
     return 0.0
   end
-  let _r = viz_render(_app_canvas, data, viz_type, config, _app_canvas_w, _app_canvas_h)
+  let _r = viz_render(_app_canvas[0], data, viz_type, config, _app_canvas_w[0], _app_canvas_h[0])
   return 1.0
 end
 
 fn app_render_raw(render_fn, state, config)
-  if _app_inited == 0.0
+  if _app_inited[0] == 0.0
     return 0.0
   end
-  if _app_canvas < 0.0
+  if _app_canvas[0] < 0.0
     return 0.0
   end
-  let _c = gui_canvas_clear(_app_canvas)
-  return render_fn(_app_canvas, state, config)
+  let _c = gui_canvas_clear(_app_canvas[0])
+  return render_fn(_app_canvas[0], state, config)
 end
 
 fn _app_handle_transport()
-  if _app_btn_play >= 0.0
-    if gui_clicked(int(_app_btn_play)) == 1.0
-      if _app_playing == 0.0
-        _app_playing = 1.0
+  if _app_btn_play[0] >= 0.0
+    if gui_clicked(int(_app_btn_play[0])) == 1.0
+      if _app_playing[0] == 0.0
+        _app_playing[0] = 1.0
       else
-        _app_playing = 0.0
+        _app_playing[0] = 0.0
       end
     end
   end
 
-  if _app_btn_step >= 0.0
-    if gui_clicked(int(_app_btn_step)) == 1.0
-      _app_step = _app_step + 1.0
+  if _app_btn_step[0] >= 0.0
+    if gui_clicked(int(_app_btn_step[0])) == 1.0
+      _app_step[0] = _app_step[0] + 1.0
       return 1.0
     end
   end
 
-  if _app_btn_reset >= 0.0
-    if gui_clicked(int(_app_btn_reset)) == 1.0
-      _app_step = 0.0
-      _app_playing = 0.0
+  if _app_btn_reset[0] >= 0.0
+    if gui_clicked(int(_app_btn_reset[0])) == 1.0
+      _app_step[0] = 0.0
+      _app_playing[0] = 0.0
       return 2.0
     end
   end
 
-  if _app_slider_speed >= 0.0
-    _app_speed = gui_slider_value(int(_app_slider_speed))
-    if _app_speed < 0.1
-      _app_speed = 0.1
+  if _app_slider_speed[0] >= 0.0
+    _app_speed[0] = gui_slider_value(int(_app_slider_speed[0]))
+    if _app_speed[0] < 0.1
+      _app_speed[0] = 0.1
     end
   end
 
   // Handle record button
-  if _app_btn_record >= 0.0
-    if gui_clicked(int(_app_btn_record)) == 1.0
-      if _app_recording == 0.0
-        _app_recording = 1.0
-        gui_set_text(_app_label_status, "RECORDING")
+  if _app_btn_record[0] >= 0.0
+    if gui_clicked(int(_app_btn_record[0])) == 1.0
+      if _app_recording[0] == 0.0
+        _app_recording[0] = 1.0
+        gui_set_text(_app_label_status[0], "RECORDING")
       else
-        _app_recording = 0.0
-        gui_set_text(_app_label_status, "Ready")
+        _app_recording[0] = 0.0
+        gui_set_text(_app_label_status[0], "Ready")
       end
     end
   end
 
-  if _app_playing == 1.0
+  if _app_playing[0] == 1.0
     return 1.0
   end
 
@@ -225,7 +228,7 @@ fn _app_handle_transport()
 end
 
 fn app_loop(step_fn)
-  if _app_inited == 0.0
+  if _app_inited[0] == 0.0
     return 0.0
   end
 
@@ -236,35 +239,35 @@ fn app_loop(step_fn)
 
     if step_fn != 0.0
       if action == 1.0
-        _app_step = _app_step + 1.0
+        _app_step[0] = _app_step[0] + 1.0
       end
       if action == 2.0
-        _app_step = 0.0
+        _app_step[0] = 0.0
       end
     end
   end
 
-  return _app_step
+  return _app_step[0]
 end
 
 fn app_is_playing()
-  return _app_playing
+  return _app_playing[0]
 end
 
 fn app_step()
-  return _app_step
+  return _app_step[0]
 end
 
 fn app_speed()
-  return _app_speed
+  return _app_speed[0]
 end
 
 fn app_canvas()
-  return _app_canvas
+  return _app_canvas[0]
 end
 
 fn app_canvas_size()
-  return [_app_canvas_w, _app_canvas_h]
+  return [_app_canvas_w[0], _app_canvas_h[0]]
 end
 
 fn app_set_step(s)
@@ -272,17 +275,17 @@ fn app_set_step(s)
   if val < 0.0
     val = 0.0
   end
-  _app_step = val
+  _app_step[0] = val
   return 0.0
 end
 
 fn app_is_recording()
-  return _app_recording
+  return _app_recording[0]
 end
 
 fn app_set_status(text)
-  if _app_label_status >= 0.0
-    gui_set_text(_app_label_status, text)
+  if _app_label_status[0] >= 0.0
+    gui_set_text(_app_label_status[0], text)
   end
   return 0.0
 end

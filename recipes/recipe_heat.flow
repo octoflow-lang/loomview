@@ -9,12 +9,12 @@
 
 use "gui/gui_core"
 use "gui/canvas"
-use "src/data"
-use "src/config"
-use "src/render"
-use "src/app"
-use "src/palette"
-use "src/recorder"
+use "../src/data"
+use "../src/config"
+use "../src/render"
+use "../src/app"
+use "../src/palette"
+use "../src/recorder"
 
 fn recipe_heat_init(w, h)
   let mut gw = w

@@ -15,14 +15,15 @@
 use "data"
 
 // === Stream State ===
-let mut _stream_active = 0.0
-let mut _stream_poll_hz = 30.0
-let mut _stream_poll_interval_ms = 33.0
-let mut _stream_last_poll_ms = 0.0
+// Single-element arrays for cross-module mutation visibility.
+let mut _stream_active = [0.0]
+let mut _stream_poll_hz = [30.0]
+let mut _stream_poll_interval_ms = [33.0]
+let mut _stream_last_poll_ms = [0.0]
 let mut _stream_data = []
-let mut _stream_prev_len = 0.0
-let mut _stream_changed = 0.0
-let mut _stream_frame_count = 0.0
+let mut _stream_prev_len = [0.0]
+let mut _stream_changed = [0.0]
+let mut _stream_frame_count = [0.0]
 
 // Fingerprint cache for change detection
 let mut _stream_prev_fp = []
@@ -36,39 +37,36 @@ fn stream_start(poll_hz)
     hz = 120.0
   end
 
-  _stream_poll_hz = hz
-  _stream_poll_interval_ms = 1000.0 / hz
-  _stream_active = 1.0
-  _stream_data = []
-  _stream_prev_len = 0.0
-  _stream_changed = 0.0
-  _stream_frame_count = 0.0
-  _stream_prev_fp = []
+  _stream_poll_hz[0] = hz
+  _stream_poll_interval_ms[0] = 1000.0 / hz
+  _stream_active[0] = 1.0
+  _stream_prev_len[0] = 0.0
+  _stream_changed[0] = 0.0
+  _stream_frame_count[0] = 0.0
 
   print("Stream: started at {hz} Hz")
   return 1.0
 end
 
 fn stream_stop()
-  _stream_active = 0.0
-  print("Stream: stopped after {_stream_frame_count} frames")
-  return _stream_frame_count
+  _stream_active[0] = 0.0
+  let fc = _stream_frame_count[0]
+  print("Stream: stopped after {fc} frames")
+  return fc
 end
 
 fn stream_is_active()
-  return _stream_active
+  return _stream_active[0]
 end
 
 fn stream_poll(current_ms)
-  // Poll the Loom VM globals buffer for new data
-  // Returns 1.0 if new data was read, 0.0 if skipped (rate limiting)
-  if _stream_active == 0.0
+  if _stream_active[0] == 0.0
     return 0.0
   end
 
   // Rate limiting
-  let elapsed = current_ms - _stream_last_poll_ms
-  if elapsed < _stream_poll_interval_ms && _stream_frame_count > 0.0
+  let elapsed = current_ms - _stream_last_poll_ms[0]
+  if elapsed < _stream_poll_interval_ms[0] && _stream_frame_count[0] > 0.0
     return 0.0
   end
 
@@ -77,14 +75,14 @@ fn stream_poll(current_ms)
   let n = len(data)
 
   // Detect shape change
-  _stream_changed = 0.0
-  if n != _stream_prev_len
-    _stream_changed = 1.0
-    _stream_prev_len = n
+  _stream_changed[0] = 0.0
+  if n != _stream_prev_len[0]
+    _stream_changed[0] = 1.0
+    _stream_prev_len[0] = n
   end
 
   // Quick fingerprint comparison (just check min/max/mean)
-  if n > 0.0 && _stream_changed == 0.0
+  if n > 0.0 && _stream_changed[0] == 0.0
     let fp = viz_fingerprint(data)
     if len(_stream_prev_fp) == 16.0
       // Compare key dimensions
@@ -101,15 +99,15 @@ fn stream_poll(current_ms)
         mean_diff = 0.0 - mean_diff
       end
       if min_diff > 0.001 || max_diff > 0.001 || mean_diff > 0.001
-        _stream_changed = 1.0
+        _stream_changed[0] = 1.0
       end
     end
     _stream_prev_fp = fp
   end
 
   _stream_data = data
-  _stream_last_poll_ms = current_ms
-  _stream_frame_count = _stream_frame_count + 1.0
+  _stream_last_poll_ms[0] = current_ms
+  _stream_frame_count[0] = _stream_frame_count[0] + 1.0
 
   return 1.0
 end
@@ -119,11 +117,11 @@ fn stream_read()
 end
 
 fn stream_changed()
-  return _stream_changed
+  return _stream_changed[0]
 end
 
 fn stream_frame_count()
-  return _stream_frame_count
+  return _stream_frame_count[0]
 end
 
 fn stream_get_fingerprint()

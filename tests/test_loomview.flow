@@ -6,10 +6,10 @@
 // Usage:
 //   octoflow test tests/test_loomview.flow
 
-use "src/data"
-use "src/config"
-use "src/palette"
-use "src/recorder"
+use "../src/data"
+use "../src/config"
+use "../src/palette"
+use "../src/recorder"
 
 let mut _test_pass = 0.0
 let mut _test_fail = 0.0

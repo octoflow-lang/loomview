@@ -9,11 +9,11 @@
 
 use "gui/gui_core"
 use "gui/canvas"
-use "src/data"
-use "src/config"
-use "src/render"
-use "src/app"
-use "src/palette"
+use "../src/data"
+use "../src/config"
+use "../src/render"
+use "../src/app"
+use "../src/palette"
 
 fn recipe_wave_init(w, h)
   let mut gw = w

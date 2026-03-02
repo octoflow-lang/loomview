@@ -11,11 +11,11 @@
 
 use "gui/gui_core"
 use "gui/canvas"
-use "src/data"
-use "src/config"
-use "src/render"
-use "src/app"
-use "src/palette"
+use "../src/data"
+use "../src/config"
+use "../src/render"
+use "../src/app"
+use "../src/palette"
 
 fn _sort_random_array(n)
   // Generate pseudo-random array using LCG

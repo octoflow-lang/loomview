@@ -11,11 +11,11 @@
 
 use "gui/gui_core"
 use "gui/canvas"
-use "src/data"
-use "src/config"
-use "src/render"
-use "src/app"
-use "src/palette"
+use "../src/data"
+use "../src/config"
+use "../src/render"
+use "../src/app"
+use "../src/palette"
 
 let FFT_WINDOW = 64.0
 let FFT_COLUMNS = 120.0
